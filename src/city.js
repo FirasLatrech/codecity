@@ -28,6 +28,7 @@ export function textPlane(text, maxW, color = 'rgba(230,237,243,.5)') {
   g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillText(text, 256, 66);
   const t = new THREE.CanvasTexture(c);
+  t.anisotropy = 8; // ground labels are read at grazing angles
   const w = Math.min(maxW, Math.max(6, text.length * 1.1));
   const p = new THREE.Mesh(new THREE.PlaneGeometry(w, w / 4),
     new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false }));
@@ -90,7 +91,7 @@ export function buildCity(scene, city) {
     const title = textPlane(city.name.toUpperCase(), 34, 'rgba(230,237,243,.85)');
     title.position.set(0, 0.03, 103);
     scene.add(title);
-    const hint = textPlane('WASD · ZQSD · ARROWS — SHIFT boost · E read file · C sky', 30, 'rgba(230,237,243,.7)');
+    const hint = textPlane('WASD · ZQSD · ARROWS — SHIFT boost · E read file · C change car', 30, 'rgba(230,237,243,.7)');
     hint.position.set(0, 0.03, 131);
     scene.add(hint);
   }

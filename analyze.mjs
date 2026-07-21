@@ -155,9 +155,9 @@ function gitStats(repo) {
         const gh = /^(?:(\d+)\+)?([^@]+)@users\.noreply\.github\.com$/.exec(email);
         if (gh && !id.gh) {
           id.gh = true;
-          id.avatar = gh[1] ? `https://avatars.githubusercontent.com/u/${gh[1]}?s=128` : `https://github.com/${gh[2]}.png?size=128`;
+          id.avatar = gh[1] ? `https://avatars.githubusercontent.com/u/${gh[1]}?s=256` : `https://github.com/${gh[2]}.png?size=256`;
         } else if (!id.avatar) {
-          id.avatar = `https://www.gravatar.com/avatar/${createHash('md5').update(email).digest('hex')}?s=128&d=404`;
+          id.avatar = `https://www.gravatar.com/avatar/${createHash('md5').update(email).digest('hex')}?s=256&d=404`;
         }
         continue;
       }

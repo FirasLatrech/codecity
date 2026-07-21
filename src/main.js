@@ -1,16 +1,14 @@
-// CodeCity renderer entry: scene bootstrap, modes, inspection UI, animation loop.
+// CodeCity renderer entry: scene bootstrap, driving, inspection UI, animation loop.
 // Everything it knows comes from city.json — the analyzer bakes in layout + git stats.
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { gsap } from 'gsap';
 import { buildCity, extColor, baseY } from './city.js';
 import { face, faceSprite } from './faces.js';
-import { audio, initAudio, chime, engine } from './audio.js';
-import { createCar, driveStep } from './car.js';
+import { audio, initAudio, chime, engine, setEngineProfile } from './audio.js';
+import { CARS, createCar, setCarType, driveStep } from './car.js';
 
 let city;
 try { city = await (await fetch('/city.json')).json(); }
@@ -21,6 +19,7 @@ catch {
   throw new Error('no city.json');
 }
 const q = new URLSearchParams(location.search);
+const shot = q.has('shot'); // deterministic still for screenshot diffing
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0b0e14);
@@ -71,7 +70,18 @@ inspectFace.scale.set(4 * 0.727, 4, 1);
 inspectFace.visible = false;
 scene.add(inspectFace);
 
+// ---------- the car ----------
 const carRig = createCar(scene);
+const carBtn = document.getElementById('carBtn');
+setEngineProfile(carRig.type.engine);
+carBtn.textContent = carRig.type.emoji;
+function nextCar() {
+  setCarType(carRig, carRig.idx + 1);
+  setEngineProfile(carRig.type.engine);
+  carBtn.textContent = carRig.type.emoji;
+  chime();
+}
+carBtn.onclick = nextCar;
 
 // ---------- input ----------
 const keys = {};
@@ -83,7 +93,7 @@ addEventListener('keydown', e => {
     if (e.code === 'Escape' || e.code === 'KeyE') closeViewer();
     return;
   }
-  if (e.code === 'KeyC') setMode(mode === 'drive' ? 'orbit' : 'drive');
+  if (e.code === 'KeyC') nextCar();
   if (e.code === 'KeyM') toggleSnd();
   if (e.code === 'KeyE' && cur) openFile(cur);
   if (KEY[e.code]) { keys[KEY[e.code]] = true; e.preventDefault(); }
@@ -113,7 +123,7 @@ function setCurrent(b) {
   if (!b) { card.classList.remove('show'); inspectFace.visible = false; return; }
   buildingsMesh.setColorAt(b._i, extColor(b.ext).multiplyScalar(2.2));
   buildingsMesh.instanceColor.needsUpdate = true;
-  if (mode === 'drive') chime();
+  chime();
   card.classList.add('show');
 
   facesEl.replaceChildren(...(b.authors ?? []).map(([n, , h]) => {
@@ -162,28 +172,10 @@ document.getElementById('repoline').textContent =
   `${city.name} · ${city.buildings.length} files · ${team.map(([n]) => n).join(', ')}`;
 setTimeout(() => document.getElementById('brand').classList.add('dim'), 6000);
 
-// ---------- modes ----------
-let mode = null;
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.maxPolarAngle = Math.PI / 2 - 0.05;
-controls.maxDistance = 700;
-const modeBtn = document.getElementById('modeBtn');
-function setMode(mn) {
-  mode = mn;
-  const drive = mn === 'drive';
-  controls.enabled = !drive;
-  carRig.group.visible = drive;
-  modeBtn.textContent = drive ? '🚗' : '🛰';
-  if (audio.engineGain && !drive) audio.engineGain.gain.value = 0;
-  if (!drive) {
-    controls.target.set(carRig.car.pos.x, 2, carRig.car.pos.z);
-    setCurrent(null);
-  }
-}
-modeBtn.onclick = () => setMode(mode === 'drive' ? 'orbit' : 'drive');
-
-const composer = new EffectComposer(renderer);
+// ---------- post ----------
+// MSAA render target — without samples the bloom pipeline drops the canvas's antialiasing
+const composer = new EffectComposer(renderer,
+  new THREE.WebGLRenderTarget(innerWidth, innerHeight, { samples: 4, type: THREE.HalfFloatType }));
 composer.setPixelRatio(Math.min(devicePixelRatio, 2));
 composer.addPass(new RenderPass(scene, camera));
 composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.35, 0.4, 1.0));
@@ -197,39 +189,6 @@ if (q.has('debug')) {
   document.body.appendChild(stats.dom);
 }
 
-function flyTo(b) {
-  let dir = new THREE.Vector3().subVectors(camera.position, controls.target).setY(0);
-  if (dir.lengthSq() < 1e-4) dir.set(1, 0, 1);
-  dir.normalize();
-  const dist = Math.max(25, b.h * 2.2, Math.max(b.w, b.d) * 4);
-  const pos = new THREE.Vector3(b.x, 0, b.z).addScaledVector(dir, dist).setY(Math.max(18, b.h * 1.6));
-  controls.enabled = false;
-  gsap.to(camera.position, { x: pos.x, y: pos.y, z: pos.z, duration: 1.4, ease: 'power3.inOut' });
-  gsap.to(controls.target, {
-    x: b.x, y: baseY(b) + b.h / 2, z: b.z, duration: 1.4, ease: 'power3.inOut',
-    onComplete: () => { controls.enabled = true; },
-  });
-}
-const ray = new THREE.Raycaster(), pointer = new THREE.Vector2();
-const pick = e => {
-  pointer.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-  ray.setFromCamera(pointer, camera);
-  return ray.intersectObject(buildingsMesh)[0];
-};
-addEventListener('pointermove', e => {
-  if (mode !== 'orbit' || viewerOpen || e.target !== renderer.domElement) return;
-  const hit = pick(e);
-  setCurrent(hit ? city.buildings[hit.instanceId] : null);
-});
-let down = null;
-addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; });
-addEventListener('pointerup', e => {
-  if (mode !== 'orbit' || viewerOpen || e.target !== renderer.domElement) return;
-  if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5) return;
-  const hit = pick(e);
-  if (hit) flyTo(city.buildings[hit.instanceId]);
-});
-
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
@@ -237,21 +196,19 @@ addEventListener('resize', () => {
   composer.setSize(innerWidth, innerHeight);
 });
 
-if (q.has('shot')) { setMode('orbit'); camera.position.set(150, 120, 150); controls.target.set(0, 0, 0); }
-else setMode('drive');
+if (shot) { camera.position.set(150, 120, 150); camera.lookAt(0, 0, 0); }
 
 const clock = new THREE.Clock();
 let t = 0;
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05);
   t += dt;
-  if (mode === 'drive' && !viewerOpen) setCurrent(driveStep(dt, carRig, keys, camera, city.buildings, groundY));
-  else controls.update();
+  if (!shot && !viewerOpen) setCurrent(driveStep(dt, carRig, keys, camera, city.buildings, groundY));
   beaconMat.emissiveIntensity = 2.4 + Math.sin(t * 2) * 0.5;
   for (const r of residents) r.s.position.set(r.b.x, baseY(r.b) + r.b.h + 3.6 + Math.sin(t * 1.6 + r.ph) * 0.35, r.b.z);
   for (const s of gate) s.s.position.y = s.y0 + Math.sin(t * 1.3 + s.ph) * 0.3;
   if (cur && inspectFace.visible) inspectFace.position.set(cur.x, baseY(cur) + cur.h + 3, cur.z);
-  engine(carRig.car.speed, mode === 'drive' && !viewerOpen);
+  engine(carRig.car.speed, !viewerOpen);
   if (q.has('nobloom')) renderer.render(scene, camera); else composer.render();
   stats?.update();
 });

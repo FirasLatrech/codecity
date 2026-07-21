@@ -7,8 +7,9 @@ const faceCache = new Map();
 export function face(name, url) {
   if (faceCache.has(name)) return faceCache.get(name);
   const c = document.createElement('canvas');
-  c.width = 128; c.height = 176;
+  c.width = 256; c.height = 352; // drawn at 2x for crisp sprites, coordinates below stay in 128x176 space
   const g = c.getContext('2d');
+  g.scale(2, 2);
   const drawAll = img => {
     g.clearRect(0, 0, 128, 176);
     g.save();
@@ -38,6 +39,7 @@ export function face(name, url) {
   };
   drawAll(null);
   const tex = new THREE.CanvasTexture(c);
+  tex.anisotropy = 8;
   const entry = { tex, url: c.toDataURL() };
   if (url) {
     const img = new Image();

@@ -9,7 +9,6 @@
     "analyze": "node analyze.mjs"
   },
   "dependencies": {
-    "gsap": "^3.12.5",
     "three": "^0.165.0"
   },
   "devDependencies": {

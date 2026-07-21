@@ -1,16 +1,30 @@
 // Everything synthesized, no audio files: engine drone, collision thump, inspect chime.
-export const audio = { ctx: null, muted: false };
+// The engine voice is a per-car profile: two oscillators into a lowpass.
+export const audio = {
+  ctx: null, muted: false,
+  profile: { type1: 'sawtooth', type2: 'square', f1: 46, f2: 92, m1: 2.4, m2: 4.8, lp: 420, vol: 1 },
+};
+
+// swap the engine voice (car change) — live if the context is already running
+export function setEngineProfile(p) {
+  audio.profile = p;
+  if (!audio.ctx) return;
+  audio.osc.type = p.type1;
+  audio.osc2.type = p.type2;
+  audio.lp.frequency.value = p.lp;
+}
 
 export function initAudio() {
   if (audio.ctx || audio.muted) return;
   const ctx = audio.ctx = new AudioContext();
+  const p = audio.profile;
   const master = audio.master = ctx.createGain();
   master.gain.value = 1;
   master.connect(ctx.destination);
-  const osc = ctx.createOscillator(); osc.type = 'sawtooth'; osc.frequency.value = 46;
-  const osc2 = ctx.createOscillator(); osc2.type = 'square'; osc2.frequency.value = 92;
+  const osc = ctx.createOscillator(); osc.type = p.type1; osc.frequency.value = p.f1;
+  const osc2 = ctx.createOscillator(); osc2.type = p.type2; osc2.frequency.value = p.f2;
   const g2 = ctx.createGain(); g2.gain.value = 0.3;
-  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 420;
+  const lp = audio.lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = p.lp;
   const eg = audio.engineGain = ctx.createGain(); eg.gain.value = 0;
   osc.connect(lp); osc2.connect(g2); g2.connect(lp); lp.connect(eg); eg.connect(master);
   osc.start(); osc2.start();
@@ -47,11 +61,11 @@ export function chime() {
   o.start(); o.stop(ctx.currentTime + 0.25);
 }
 
-// speed-tracking engine drone; on=false silences it (orbit mode, viewer open, muted)
+// speed-tracking engine drone; on=false silences it (viewer open, muted)
 export function engine(speed, on) {
   if (!audio.ctx) return;
-  const v = Math.abs(speed);
-  audio.osc.frequency.value = 46 + v * 2.4;
-  audio.osc2.frequency.value = 92 + v * 4.8;
-  audio.engineGain.gain.value = on && !audio.muted ? Math.min(0.05, 0.008 + v * 0.0011) : 0;
+  const p = audio.profile, v = Math.abs(speed);
+  audio.osc.frequency.value = p.f1 + v * p.m1;
+  audio.osc2.frequency.value = p.f2 + v * p.m2;
+  audio.engineGain.gain.value = on && !audio.muted ? Math.min(0.05, 0.008 + v * 0.0011) * p.vol : 0;
 }
