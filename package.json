@@ -3,10 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "node api.js && vite",
+    "build": "node api.js && vite build",
     "preview": "vite preview",
-    "analyze": "node analyze.mjs"
+    "analyze": "node analyze.mjs",
+    "server": "node server.mjs"
   },
   "dependencies": {
     "three": "^0.165.0"
