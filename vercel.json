@@ -1,6 +1,7 @@
 {
   "buildCommand": "node tools/bake-examples.mjs && vite build",
   "outputDirectory": "dist",
+  "functions": { "api/analyze.mjs": { "maxDuration": 60 } },
   "rewrites": [
     { "source": "/analyze", "destination": "/api/analyze" },
     { "source": "/raw", "destination": "/api/raw" },

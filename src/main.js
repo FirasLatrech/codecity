@@ -116,6 +116,12 @@ function home(message) {
       const r = await fetch('/analyze?url=' + encodeURIComponent(input.value.trim()));
       const j = await r.json();
       if (!r.ok) throw new Error(j.error);
+      // hosted bakes return the city inline (serverless has no shared disk) —
+      // park it in sessionStorage for the city page to pick up
+      if (j.city) {
+        try { sessionStorage.setItem('city:' + j.name, JSON.stringify(j.city)); }
+        catch { throw new Error('this city is too big for the hosted demo — run CodeCity locally'); }
+      }
       location.pathname = '/' + j.name; // the city loads from its own URL
     } catch (err) {
       status.textContent = err.message || 'something went wrong — try again';
@@ -130,12 +136,17 @@ if (!repoName) { home(); throw new Error('landing'); }
 let city;
 try {
   const r = await fetch(`/cities/${encodeURIComponent(repoName)}.json`);
-  if (!r.ok) throw 0;
+  if (!r.ok || !r.headers.get('content-type')?.includes('json')) throw 0;
   city = await r.json();
 } catch {
-  history.replaceState(null, '', '/');
-  home(`no city "${repoName}" here yet — paste its GitHub URL to build it`);
-  throw new Error('unknown city');
+  // hosted bakes live in sessionStorage, not on disk (see the /analyze handoff)
+  const stored = sessionStorage.getItem('city:' + repoName);
+  if (stored) city = JSON.parse(stored);
+  else {
+    history.replaceState(null, '', '/');
+    home(`no city "${repoName}" here yet — paste its GitHub URL to build it`);
+    throw new Error('unknown city');
+  }
 }
 const q = new URLSearchParams(location.search);
 const shot = q.has('shot'); // deterministic still for screenshot diffing
@@ -552,7 +563,12 @@ async function openFile(b) {
   viewerOpen = true;
   for (const k of Object.keys(keys)) keys[k] = false;
   try {
-    const r = await fetch(`/raw?repo=${encodeURIComponent(repoName)}&p=${encodeURIComponent(b.path)}`);
+    // cities that know their GitHub origin read straight from raw.githubusercontent
+    // (CORS-open) — hosted bakes have no repo on the server; /raw covers the rest
+    let r = city.gh
+      ? await fetch(`https://raw.githubusercontent.com/${city.gh}/HEAD/${b.path.split('/').map(encodeURIComponent).join('/')}`).catch(() => null)
+      : null;
+    if (!r?.ok) r = await fetch(`/raw?repo=${encodeURIComponent(repoName)}&p=${encodeURIComponent(b.path)}`);
     vbody.textContent = r.ok ? await r.text() : 'could not load file';
   } catch { vbody.textContent = 'could not load file'; }
 }
