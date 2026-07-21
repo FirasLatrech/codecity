@@ -2,8 +2,25 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>CodeCity</title>
+<title>CodeCity — drive through any GitHub repo as a 3D city</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="Every repo is a city. Paste a GitHub URL and drive through it in 3D — buildings are files, districts are folders, glowing windows are your hottest code." />
+<!-- favicon -->
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<!-- social share (X, LinkedIn, Slack…). NOTE: change SITE_URL to your real domain once deployed -->
+<meta property="og:type" content="website" />
+<meta property="og:title" content="CodeCity — drive through any GitHub repo as a 3D city" />
+<meta property="og:description" content="Every repo is a city. Buildings are files, districts are folders, glowing windows are your hottest code — and you drive through it." />
+<meta property="og:image" content="https://codecity.dev/og.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:url" content="https://codecity.dev/" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="CodeCity — drive through any GitHub repo as a 3D city" />
+<meta name="twitter:description" content="Every repo is a city. Drive through yours." />
+<meta name="twitter:image" content="https://codecity.dev/og.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=Instrument+Serif:ital@1&display=swap" rel="stylesheet" />
@@ -11,6 +28,16 @@
 </head>
 <body>
 <div id="brand"><h1>CODECITY</h1><span id="repoline"></span></div>
+<a id="cityCred" href="https://github.com/FirasLatrech" target="_blank" rel="noopener">built by Firas Latrach</a>
+<div id="cityShare">
+  <a id="starRepo" target="_blank" rel="noopener">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+    <span></span>
+  </a>
+  <button id="copyLink" aria-label="copy link to this city">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 1 1 0 10h-2"/><line x1="8" x2="16" y1="12" y2="12"/></svg>
+  </button>
+</div>
 <button class="fab" id="playBtn" aria-label="play — collect the coins, don't crash (G)">
   <svg viewBox="0 0 24 24"><line x1="6" x2="10" y1="12" y2="12"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="15" x2="15.01" y1="13" y2="13"/><line x1="18" x2="18.01" y1="11" y2="11"/><rect width="20" height="12" x="2" y="6" rx="6"/></svg>
   play
@@ -30,6 +57,13 @@
       <button id="gQuit">back to cruising</button>
       <button id="gRetry">play again</button>
     </div>
+    <footer id="gCred">
+      <span>built by</span>
+      <a href="https://github.com/FirasLatrech" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55v-1.95c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.56-.29-5.26-1.28-5.26-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.05 11.05 0 0 1 5.79 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.12 3.05.74.81 1.18 1.84 1.18 3.1 0 4.43-2.7 5.41-5.28 5.69.42.36.79 1.07.79 2.16v3.2c0 .3.21.67.8.55A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/></svg>
+        Firas Latrach
+      </a>
+    </footer>
   </div>
 </div>
 <div id="hurtFx"></div>
@@ -91,6 +125,17 @@
       </a>
     </footer>
     <div id="homeStatus"></div>
+    <div id="explore">
+      <span class="ex-label">or roll into a public city</span>
+      <div class="ex-chips">
+        <button type="button" data-repo="facebook/react">react</button>
+        <button type="button" data-repo="vitejs/vite">vite</button>
+        <button type="button" data-repo="expressjs/express">express</button>
+        <button type="button" data-repo="chalk/chalk">chalk</button>
+        <button type="button" data-repo="honojs/hono">hono</button>
+        <button type="button" data-repo="sindresorhus/slugify">slugify</button>
+      </div>
+    </div>
   </div>
   <div id="skyline" aria-hidden="true">
     <svg class="back" viewBox="0 0 1200 140" preserveAspectRatio="none">

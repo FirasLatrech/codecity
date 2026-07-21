@@ -56,6 +56,9 @@ function home(message) {
       }, 320);
     });
   }, 2600);
+  // "explore a public city" chips — one click fills the field and builds it
+  for (const chip of el.querySelectorAll('#explore button'))
+    chip.onclick = () => { input.value = chip.dataset.repo; form.requestSubmit(); };
   form.onsubmit = async e => {
     e.preventDefault();
     if (!input.value.trim()) return;
@@ -90,6 +93,25 @@ try {
 const q = new URLSearchParams(location.search);
 const shot = q.has('shot'); // deterministic still for screenshot diffing
 document.body.classList.add('city'); // reveals in-city-only chrome like the play button
+
+// ---------- share this city + star the repo it came from ----------
+// anyone who opens a shared /<repo> link gets a one-click star for the original repo
+if (city.gh) {
+  const star = document.getElementById('starRepo');
+  star.href = `https://github.com/${city.gh}`;
+  star.querySelector('span').textContent = `star ${city.gh}`;
+  star.style.display = 'inline-flex';
+}
+{
+  const copy = document.getElementById('copyLink');
+  copy.onclick = async () => {
+    // native share sheet on mobile; copy-to-clipboard with a "copied" tick everywhere else
+    if (navigator.share) { try { await navigator.share({ title: 'CodeCity', url: location.href }); } catch {} return; }
+    try { await navigator.clipboard.writeText(location.href); } catch {}
+    copy.classList.add('done');
+    setTimeout(() => copy.classList.remove('done'), 1200);
+  };
+}
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0b0e14);
@@ -338,8 +360,13 @@ shareRecBtn.onclick = () => {
 // ---------- input ----------
 const keys = {};
 const KEY = { KeyW: 'f', ArrowUp: 'f', KeyS: 'b', ArrowDown: 'b', KeyA: 'l', ArrowLeft: 'l', KeyD: 'r', ArrowRight: 'r', ShiftLeft: 'boost', ShiftRight: 'boost' };
+// e.code is physical, so WASD/ZQSD/Arabic layouts all steer out of the box; this maps
+// the Arabic-101 letters back to their physical spots for keyboards that only report e.key
+const AR = { 'ص': 'KeyW', 'س': 'KeyS', 'ش': 'KeyA', 'ي': 'KeyD', 'ؤ': 'KeyC', 'ة': 'KeyM', 'ف': 'KeyT', 'ح': 'KeyP', 'ل': 'KeyG', 'ث': 'KeyE', 'ق': 'KeyR' };
+const keyCode = e => AR[e.key] || e.code;
 addEventListener('pointerdown', initAudio);
-addEventListener('keydown', e => {
+addEventListener('keydown', ev => {
+  const e = { code: keyCode(ev), preventDefault: () => ev.preventDefault() };
   initAudio();
   if (recState) return; // don't disturb the take
   if (shot) return; // ?shot is a deterministic still — keys would strand its camera
@@ -366,7 +393,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyE' && cur) openFile(cur);
   if (KEY[e.code]) { keys[KEY[e.code]] = true; e.preventDefault(); }
 });
-addEventListener('keyup', e => { if (KEY[e.code]) keys[KEY[e.code]] = false; });
+addEventListener('keyup', e => { const c = keyCode(e); if (KEY[c]) keys[KEY[c]] = false; });
 
 const sndBtn = document.getElementById('sndBtn');
 function toggleSnd() {
@@ -424,6 +451,7 @@ tooltip(sndBtn, () => audio.muted ? 'unmute — M' : 'mute — M');
 tooltip(tlBtn, () => tlOpen ? 'exit timelapse — T' : 'timelapse — T');
 tooltip(document.getElementById('shareBtn'), () => 'share card — P');
 tooltip(document.getElementById('raceBtn'), () => 'race the gates — R');
+tooltip(document.getElementById('copyLink'), () => navigator.share ? 'share this city' : 'copy link to this city');
 
 // ---------- inspection card + file viewer ----------
 const fmtAge = a => a === 0 ? 'today' : a === 1 ? 'yesterday' : a < 30 ? a + ' days ago' : a < 365 ? Math.round(a / 30) + ' months ago' : (a / 365).toFixed(1) + ' years ago';
