@@ -1,6 +1,6 @@
 # CodeCity
 
-A repo rendered as a 3D city. Building = file (height = √lines, footprint ∝ bytes^0.72), district = folder, glowing windows = high-churn files (≥ p90 commits).
+A repo rendered as a 3D city you drive through. Building = file (height = √lines, footprint ∝ bytes^0.72), district = folder, glowing windows = high-churn files (≥ p90 commits). Two modes: drive (default — arcade car, chase cam, sidebar inspects the nearest building: lines/size/commits/age/co-authors) and orbit (hover + click-to-fly). `?shot` forces a deterministic orbit still for screenshot diffing; `?nobloom` skips post-processing.
 
 ## Pipeline
 
