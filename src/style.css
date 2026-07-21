@@ -135,6 +135,11 @@ body.city #playBtn, body.city #raceBtn { display: flex; align-items: center; }
 #ghud.show, #rhud.show { display: flex; }
 #ghud .sep, #rhud .sep { color: rgba(255, 255, 255, .25); }
 #rBest { color: rgba(255, 255, 255, .5); font-weight: 500; }
+#count { position: fixed; inset: 0; z-index: 5; display: none; place-items: center; pointer-events: none;
+         font: 700 clamp(90px, 16vw, 150px)/1 var(--display); color: #7ee0a3;
+         text-shadow: 0 10px 50px rgba(126, 224, 163, .5); letter-spacing: .04em; }
+#count.show { display: grid; animation: countPop .5s ease-out; }
+@keyframes countPop { from { transform: scale(1.25); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 #ghud .hearts { display: flex; gap: 3px; font-size: 16px; color: #ff5d6c; }
 #ghud .hearts .lost { color: rgba(255, 255, 255, .18); }
 #gover { position: fixed; inset: 0; z-index: 9; display: none; place-items: center;

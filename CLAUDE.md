@@ -25,6 +25,7 @@ The renderer never touches git or the filesystem — everything it needs is bake
 - `src/city.js` — city geometry from city.json (plates, buildings, beacons, labels, trees) + `setCityTime(sec)` time-scrub (instance matrices only, no rebuild).
 - `src/share.js` — pure share-card composer (2D canvas over the WebGL frame).
 - `src/game.js` — coin-run game mode (G / left play button): 40 instanced coins on the plates, 5 hearts, hard crashes cost one (1.2s grace, `rig.hit` flag set in car.js), 0 = wrecked, all coins = win. Flat repos fall back to the root plate for coin placement.
+- `src/race.js` — race mode (R / left race button): 8 checkpoint gates sampled like coins then angle-sorted into a circuit, drive through in order, 3-2-1-GO countdown (car parked until GO), timer + per-repo best in localStorage. Next gate glows green with a beacon column + a chevron over the car points at it; gates are one InstancedMesh. Game, race, and timelapse all stop each other; the #gover retry/quit buttons are claimed by whichever mode ends.
 - `src/car.js` — the CARS garage (body build + handling spec + engine profile per car), arcade physics, chase cam.
 - `src/faces.js` — author face sprites (drawn fallback, avatar swaps in on load).
 - `src/audio.js` — synthesized engine/thump/chime, no audio files. Engine = osc pair → waveshaper growl → lowpass, pitched by a virtual gearbox (RPM climbs per gear, drops ~30% on shifts) + speed² wind-noise bed; all character comes from the per-car profile in `CARS`.

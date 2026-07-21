@@ -224,6 +224,7 @@ function setTimeline(open) {
   for (const r of residents) r.s.visible = !open;
   setLiveShadows(open);
   if (open) {
+    game.stop(); race.stop(); // the show and the games don't mix
     setCurrent(null);
     orbitA = Math.atan2(camera.position.z - 0.001, camera.position.x + 0.001);
     tlU = 0;

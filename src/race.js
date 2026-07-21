@@ -2,7 +2,7 @@
 // clock. Best time per repo lives in localStorage. One InstancedMesh for all gates,
 // next gate glows green (accent) + a light column beacon so you can spot it from afar.
 import * as THREE from 'three';
-import { coinSnd, winSnd } from './audio.js';
+import { coinSnd, winSnd, chime } from './audio.js';
 
 const GATES = 8;
 const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s) % 60).padStart(2, '0')}.${Math.floor(s * 10) % 10}`;
@@ -65,8 +65,18 @@ export function createRace({ scene, city, carRig, onBeforeStart }) {
   beacon.visible = false;
   scene.add(beacon);
 
+  // chevron over the car pointing at the next gate — you never lose the circuit
+  const arrowGeo = new THREE.ConeGeometry(.6, 1.5, 4);
+  arrowGeo.rotateX(Math.PI / 2); // nose forward, yaw steers it
+  const arrow = new THREE.Mesh(arrowGeo,
+    new THREE.MeshBasicMaterial({ color: 0x7ee0a3, toneMapped: false }));
+  arrow.visible = false;
+  scene.add(arrow);
+
+  const countEl = document.getElementById('count');
+
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), sc = new THREE.Vector3();
-  const r = { active: false, next: 0, t: 0 };
+  const r = { active: false, next: 0, t: 0, count: 0 };
 
   function drawHUD() {
     gatesEl.textContent = `${r.next}/${spots.length}`;
@@ -77,11 +87,14 @@ export function createRace({ scene, city, carRig, onBeforeStart }) {
 
   function start() {
     onBeforeStart?.();
-    Object.assign(r, { active: true, next: 0, t: 0 });
+    Object.assign(r, { active: true, next: 0, t: 0, count: 3 });
+    for (const s of spots) s.pop = 0;
     carRig.car.pos.set(0, 0, 138);
     carRig.car.heading = Math.PI;
     carRig.car.speed = 0;
-    gates.visible = beacon.visible = true;
+    gates.visible = beacon.visible = arrow.visible = true;
+    countEl.textContent = '3';
+    countEl.classList.add('show');
     hud.classList.add('show');
     over.classList.remove('show');
     raceBtn.classList.add('on');
@@ -89,14 +102,15 @@ export function createRace({ scene, city, carRig, onBeforeStart }) {
   }
   function stop() {
     r.active = false;
-    gates.visible = beacon.visible = false;
+    gates.visible = beacon.visible = arrow.visible = false;
+    countEl.classList.remove('show');
     hud.classList.remove('show');
     over.classList.remove('show');
     raceBtn.classList.remove('on');
   }
   function finish() {
     r.active = false;
-    beacon.visible = false;
+    beacon.visible = arrow.visible = false;
     const best = +localStorage.getItem(bestKey);
     const record = !best || r.t < best;
     if (record) localStorage.setItem(bestKey, r.t);
@@ -114,19 +128,38 @@ export function createRace({ scene, city, carRig, onBeforeStart }) {
   // called from the drive branch of the main loop
   function update(dt, t) {
     if (!gates.visible) return;
-    if (r.active) {
+    if (r.active && r.count > 0) {
+      // 3‑2‑1‑GO — the car is parked until the lights drop
+      const before = Math.ceil(r.count);
+      r.count -= dt;
+      carRig.car.speed = 0;
+      const now = Math.ceil(Math.max(0, r.count));
+      if (now !== before) {
+        countEl.textContent = now || 'GO!';
+        countEl.style.animation = 'none'; void countEl.offsetWidth; countEl.style.animation = ''; // re-pop
+        now ? chime() : coinSnd();
+      }
+      if (r.count <= 0) setTimeout(() => countEl.classList.remove('show'), 600);
+    } else if (r.active) {
       r.t += dt;
       const cp = carRig.car.pos, s = spots[r.next];
       if ((cp.x - s.x) ** 2 + (cp.z - s.z) ** 2 < 16) {
+        s.pop = 1; // the gate you just threaded bursts
         r.next++;
         coinSnd();
         if (r.next === spots.length) finish();
       }
       drawHUD();
     }
+    if (arrow.visible) {
+      const cp = carRig.car.pos, s = spots[Math.min(r.next, spots.length - 1)];
+      arrow.position.set(cp.x, cp.y + 3.4 + Math.sin(t * 3) * .18, cp.z);
+      arrow.rotation.y = Math.atan2(s.x - cp.x, s.z - cp.z);
+    }
     spots.forEach((s, i) => {
       const isNext = r.active && i === r.next;
-      const k = isNext ? 1 + Math.sin(t * 5) * .08 : 1;
+      if (s.pop > 0) s.pop = Math.max(0, s.pop - dt * 2.5);
+      const k = (isNext ? 1 + Math.sin(t * 5) * .08 : 1) + (s.pop || 0) * .6;
       q.setFromEuler(e.set(0, s.yaw, 0));
       m.compose(v.set(s.x, s.y + 2.4, s.z), q, sc.set(k, k, k));
       gates.setMatrixAt(i, m);
