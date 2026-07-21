@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>CodeCity</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0e14; font: 13px/1.45 ui-monospace, monospace; }
+  #side { position: fixed; top: 0; left: 0; bottom: 0; width: 264px; box-sizing: border-box; z-index: 2;
+          background: rgba(10,13,19,.85); backdrop-filter: blur(10px); border-right: 1px solid #1d2530;
+          color: #8b98a9; padding: 18px 16px; display: flex; flex-direction: column; gap: 14px; }
+  #side h1 { font-size: 16px; margin: 0; color: #e6edf3; letter-spacing: .08em; }
+  #side .sub { font-size: 11px; color: #56637a; }
+  .modes { display: flex; gap: 8px; }
+  .modes button { flex: 1; background: #0e131b; color: #8b98a9; border: 1px solid #1d2530; border-radius: 7px;
+                  padding: 7px 0; font: inherit; cursor: pointer; }
+  .modes button.on { background: #16202e; color: #e6edf3; border-color: #34506e; }
+  .card { background: #0e131b; border: 1px solid #1d2530; border-radius: 8px; padding: 10px 12px; }
+  .card .empty { color: #56637a; }
+  .crumb { color: #56637a; word-break: break-all; margin-bottom: 6px; }
+  .crumb b { color: #7ee0a3; }
+  .rows div { display: flex; justify-content: space-between; gap: 8px; }
+  .rows span:last-child { color: #cdd6e0; }
+  .card h3 { margin: 10px 0 4px; font-size: 11px; color: #56637a; font-weight: normal; text-transform: uppercase; letter-spacing: .08em; }
+  .card ul { margin: 0; padding: 0; list-style: none; }
+  .card li { display: flex; justify-content: space-between; color: #cdd6e0; }
+  .card li span:last-child { color: #56637a; }
+  .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 10px; }
+  .legend div { display: flex; align-items: center; gap: 6px; color: #8b98a9; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .hint { margin-top: auto; font-size: 11px; color: #56637a; }
+  .hint b { color: #8b98a9; }
+  #tip { position: fixed; pointer-events: none; z-index: 3; background: rgba(10,14,20,.92); color: #e6edf3;
+         border: 1px solid #2d3644; border-radius: 6px; padding: 6px 10px; display: none; max-width: 44ch; }
+  #tip b { color: #7ee0a3; }
+  #err { position: fixed; inset: 0; display: none; place-items: center; color: #e6edf3; text-align: center; z-index: 4; }
+</style>
+</head>
+<body>
+<div id="side">
+  <div><h1>CODECITY</h1><span class="sub" id="repoline">loading…</span></div>
+  <div class="modes">
+    <button id="btnDrive">🚗 drive</button>
+    <button id="btnOrbit">🛰 orbit</button>
+  </div>
+  <div class="card" id="filecard"><span class="empty">drive up to a building to inspect it</span></div>
+  <div class="card"><h3 style="margin-top:0">languages</h3><div class="legend" id="legend"></div></div>
+  <div class="hint" id="hint"></div>
+</div>
+<div id="tip"></div>
+<div id="err"></div>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/",
+  "gsap": "https://cdn.jsdelivr.net/npm/gsap@3.12.5/+esm"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import Stats from 'three/addons/libs/stats.module.js';
+import { gsap } from 'gsap';
+
+let city;
+try { city = await (await fetch('./city.json')).json(); }
+catch {
+  const e = document.getElementById('err');
+  e.style.display = 'grid';
+  e.innerHTML = '<div>no <b>city.json</b> yet.<br><br>run:&nbsp; <code>node analyze.mjs /path/to/repo</code><br>then refresh.</div>';
+  throw new Error('no city.json');
+}
+const q = new URLSearchParams(location.search);
+
+const PALETTE = {
+  '.js': 0xf1c40f, '.mjs': 0xf1c40f, '.cjs': 0xf1c40f, '.ts': 0x3178c6, '.jsx': 0x61dafb, '.tsx': 0x61dafb,
+  '.css': 0x2965f1, '.scss': 0xcd6799, '.html': 0xe34f26, '.json': 0x6fbf73, '.md': 0x8b98a9,
+  '.py': 0x4b8bbe, '.rs': 0xdea584, '.go': 0x00add8, '.java': 0xb07219, '.rb': 0xcc342d,
+  '.c': 0x9db4c0, '.h': 0x9db4c0, '.cpp': 0xf34b7d, '.php': 0x777bb3, '.swift': 0xf05138,
+  '.dart': 0x00b4ab, '.vue': 0x41b883, '.svelte': 0xff3e00, '.yml': 0xcb6c4d, '.yaml': 0xcb6c4d,
+};
+const extColor = ext => new THREE.Color(PALETTE[ext] ??
+  new THREE.Color().setHSL(([...ext].reduce((a, c) => a + c.charCodeAt(0), 0) % 20) / 20, .45, .55).getHex());
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b0e14);
+scene.fog = new THREE.FogExp2(0x0b0e14, 0.0016); // haze at the horizon, not on the city
+
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 2000);
+camera.position.set(420, 320, 420); // chase-cam / fly-in pulls us down from here
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0x8fb8de, 0x10141c, 0.9));
+const sun = new THREE.DirectionalLight(0xfff2d9, 1.6);
+sun.position.set(120, 180, 60);
+sun.castShadow = true; // ponytail: one shadow-mapped light; fake with ground gradients if >10k buildings hurts
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -150, right: 150, top: 150, bottom: -150, far: 500 });
+scene.add(sun);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200),
+  new THREE.MeshStandardMaterial({ color: 0x0e1219, roughness: 1 }));
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+const box = new THREE.BoxGeometry(1, 1, 1);
+const m = new THREE.Matrix4();
+const depthOf = p => p.split('/').length - 1;
+const baseY = b => 0.12 + depthOf(b.path) * 0.1;
+
+// district plates, slightly raised per nesting depth — the car climbs them like curbs
+const plates = new THREE.InstancedMesh(box,
+  new THREE.MeshStandardMaterial({ roughness: 0.95 }), city.districts.length);
+city.districts.forEach((d, i) => {
+  const y = 0.12 + d.depth * 0.1;
+  m.compose(new THREE.Vector3(d.x + d.w / 2, y / 2, d.z + d.d / 2), new THREE.Quaternion(), new THREE.Vector3(d.w, y, d.d));
+  plates.setMatrixAt(i, m);
+  plates.setColorAt(i, new THREE.Color().setHSL(0.6, 0.15, 0.09 + Math.min(d.depth, 6) * 0.02));
+});
+plates.receiveShadow = true;
+scene.add(plates);
+
+function groundY(x, z) {
+  let top = 0;
+  for (const d of city.districts)
+    if (x >= d.x && x <= d.x + d.w && z >= d.z && z <= d.z + d.d) top = Math.max(top, 0.12 + d.depth * 0.1);
+  return top;
+}
+
+// amber window grid, used as emissiveMap on high-churn buildings
+function windowTexture() {
+  const c = document.createElement('canvas');
+  c.width = 32; c.height = 64;
+  const g = c.getContext('2d');
+  g.fillStyle = '#000'; g.fillRect(0, 0, 32, 64);
+  g.fillStyle = '#ffb84d';
+  for (let y = 4; y < 60; y += 6) for (let x = 3; x < 28; x += 6)
+    if (Math.random() < 0.45) g.fillRect(x, y, 3, 3);
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = THREE.NearestFilter;
+  return t;
+}
+
+// two draw calls: hot (high-churn -> emissive windows, caught by bloom) and cold.
+// glow = commits >= max(3, p90) — relative to this repo, so it never floods or goes dark
+const sortedCommits = city.buildings.map(b => b.commits || 0).sort((a, b) => a - b);
+const HOT = Math.max(3, sortedCommits[Math.floor(sortedCommits.length * 0.9)] || 0);
+const hotB = [], coldB = [];
+for (const b of city.buildings) ((b.commits || 0) >= HOT ? hotB : coldB).push(b);
+
+function makeBuildings(list, material) {
+  const mesh = new THREE.InstancedMesh(box, material, list.length);
+  list.forEach((b, i) => {
+    m.compose(new THREE.Vector3(b.x, baseY(b) + b.h / 2, b.z), new THREE.Quaternion(), new THREE.Vector3(b.w, b.h, b.d));
+    mesh.setMatrixAt(i, m);
+    mesh.setColorAt(i, extColor(b.ext));
+    b._mesh = mesh; b._i = i;
+  });
+  mesh.castShadow = mesh.receiveShadow = true;
+  mesh.userData.list = list;
+  scene.add(mesh);
+  return mesh;
+}
+const coldMesh = makeBuildings(coldB, new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0.15 }));
+const hotMesh = makeBuildings(hotB, new THREE.MeshStandardMaterial({
+  roughness: 0.55, metalness: 0.1,
+  emissive: 0xffc06a, emissiveIntensity: 2.4, emissiveMap: windowTexture(), // >1 so windows cross the bloom threshold
+}));
+
+// trees on the outskirts, Bruno-style calm suburbia
+{
+  const N = 140;
+  const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(.25, .38, 1.6, 6),
+    new THREE.MeshStandardMaterial({ color: 0x6b4a33, roughness: 1 }), N);
+  const leaf = new THREE.InstancedMesh(new THREE.ConeGeometry(1.7, 3.6, 7),
+    new THREE.MeshStandardMaterial({ roughness: 1 }), N);
+  for (let i = 0; i < N; i++) {
+    const r = 155 + Math.random() * 120, a = Math.random() * Math.PI * 2, s = 0.7 + Math.random();
+    const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    m.compose(new THREE.Vector3(x, 0.8 * s, z), new THREE.Quaternion(), new THREE.Vector3(s, s, s));
+    trunk.setMatrixAt(i, m);
+    m.compose(new THREE.Vector3(x, (1.6 + 1.8) * s, z), new THREE.Quaternion(), new THREE.Vector3(s, s, s));
+    leaf.setMatrixAt(i, m);
+    leaf.setColorAt(i, new THREE.Color().setHSL(0.36 + Math.random() * 0.06, 0.5, 0.22 + Math.random() * 0.12));
+  }
+  scene.add(trunk, leaf);
+}
+
+// ---------- the car ----------
+const car = { pos: new THREE.Vector3(0, 0, 128), heading: Math.PI, speed: 0, steer: 0 };
+const carGroup = new THREE.Group();
+const wheels = [];
+{
+  const mat = c => new THREE.MeshStandardMaterial({ color: c, roughness: .5, metalness: .1 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.8, .55, 3.2), mat(0xd7443e));
+  body.position.y = .62;
+  const nose = new THREE.Mesh(new THREE.BoxGeometry(1.6, .3, .8), mat(0xd7443e));
+  nose.position.set(0, .5, 1.9);
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.5, .5, 1.5), mat(0xe8e6df));
+  cabin.position.set(0, 1.1, -.25);
+  const lightMat = new THREE.MeshStandardMaterial({ color: 0xfff6d5, emissive: 0xffedb0, emissiveIntensity: 3 });
+  const lampL = new THREE.Mesh(new THREE.BoxGeometry(.28, .16, .1), lightMat); lampL.position.set(-.55, .62, 2.3);
+  const lampR = lampL.clone(); lampR.position.x = .55;
+  const glow = new THREE.PointLight(0xffddaa, 40, 30, 2); glow.position.set(0, .9, 2.4);
+  const wheelGeo = new THREE.CylinderGeometry(.38, .38, .32, 12); wheelGeo.rotateZ(Math.PI / 2);
+  for (const [x, z] of [[-.85, 1.05], [.85, 1.05], [-.85, -1.1], [.85, -1.1]]) {
+    const w = new THREE.Mesh(wheelGeo, mat(0x14171e));
+    w.position.set(x, .38, z);
+    wheels.push(w); carGroup.add(w);
+  }
+  for (const p of [body, nose, cabin]) p.castShadow = true;
+  carGroup.add(body, nose, cabin, lampL, lampR, glow);
+  scene.add(carGroup);
+}
+
+const R = 1.2; // car collision radius
+const blocked = (x, z) => {
+  if (Math.abs(x) > 285 || Math.abs(z) > 285) return true;
+  for (const b of city.buildings)
+    if (Math.abs(x - b.x) < b.w / 2 + R && Math.abs(z - b.z) < b.d / 2 + R) return true;
+  return false;
+};
+
+const keys = {};
+const KEY = { KeyW: 'f', ArrowUp: 'f', KeyS: 'b', ArrowDown: 'b', KeyA: 'l', ArrowLeft: 'l', KeyD: 'r', ArrowRight: 'r', ShiftLeft: 'boost', ShiftRight: 'boost' };
+addEventListener('keydown', e => {
+  if (e.code === 'KeyC') setMode(mode === 'drive' ? 'orbit' : 'drive');
+  if (KEY[e.code]) { keys[KEY[e.code]] = true; e.preventDefault(); }
+});
+addEventListener('keyup', e => { if (KEY[e.code]) keys[KEY[e.code]] = false; });
+
+function driveStep(dt) {
+  const accel = (keys.f ? 26 : 0) - (keys.b ? 20 : 0);
+  car.speed += accel * (keys.boost ? 1.9 : 1) * dt;
+  car.speed -= car.speed * 1.6 * dt;
+  if (!accel && Math.abs(car.speed) < 0.15) car.speed = 0;
+  car.speed = Math.max(-14, Math.min(keys.boost ? 55 : 34, car.speed));
+  const steerIn = (keys.l ? 1 : 0) - (keys.r ? 1 : 0);
+  car.steer += (steerIn * 0.42 - car.steer) * Math.min(1, dt * 8);
+  car.heading += car.steer * 4.4 * dt * Math.min(1, Math.abs(car.speed) / 10) * Math.sign(car.speed);
+
+  const dir = new THREE.Vector3(Math.sin(car.heading), 0, Math.cos(car.heading));
+  const nx = car.pos.x + dir.x * car.speed * dt, nz = car.pos.z + dir.z * car.speed * dt;
+  if (!blocked(nx, nz)) { car.pos.x = nx; car.pos.z = nz; }
+  else if (!blocked(nx, car.pos.z)) { car.pos.x = nx; car.speed *= 0.7; }
+  else if (!blocked(car.pos.x, nz)) { car.pos.z = nz; car.speed *= 0.7; }
+  else car.speed *= -0.25; // soft bounce off the facade
+
+  car.pos.y += (groundY(car.pos.x, car.pos.z) - car.pos.y) * Math.min(1, dt * 10);
+  carGroup.position.copy(car.pos);
+  carGroup.rotation.y = car.heading;
+  for (let i = 0; i < 4; i++) {
+    wheels[i].rotation.x += car.speed * dt / 0.38;
+    if (i < 2) wheels[i].rotation.y = car.steer * 1.2;
+  }
+
+  const camPos = new THREE.Vector3(car.pos.x - dir.x * 9.5, car.pos.y + 4.6, car.pos.z - dir.z * 9.5);
+  camera.position.lerp(camPos, 1 - Math.exp(-dt * 3));
+  camera.lookAt(car.pos.x + dir.x * 7, car.pos.y + 1.6, car.pos.z + dir.z * 7);
+
+  // nearest building within reach -> sidebar + highlight
+  let best = null, bd = 64;
+  for (const b of city.buildings) {
+    const dx = Math.max(Math.abs(car.pos.x - b.x) - b.w / 2, 0);
+    const dz = Math.max(Math.abs(car.pos.z - b.z) - b.d / 2, 0);
+    const d2 = dx * dx + dz * dz;
+    if (d2 < bd) { bd = d2; best = b; }
+  }
+  setCurrent(best);
+}
+
+// ---------- sidebar ----------
+const fmtAge = a => a === 0 ? 'today' : a === 1 ? 'yesterday' : a < 30 ? a + ' days ago' : a < 365 ? Math.round(a / 30) + ' months ago' : (a / 365).toFixed(1) + ' years ago';
+const fileCard = document.getElementById('filecard');
+let cur = null;
+function setCurrent(b) {
+  if (b === cur) return;
+  if (cur) { cur._mesh.setColorAt(cur._i, extColor(cur.ext)); cur._mesh.instanceColor.needsUpdate = true; }
+  cur = b;
+  if (!b) {
+    fileCard.innerHTML = '<span class="empty">drive up to a building to inspect it</span>';
+    return;
+  }
+  b._mesh.setColorAt(b._i, extColor(b.ext).multiplyScalar(2.2));
+  b._mesh.instanceColor.needsUpdate = true;
+  const parts = b.path.split('/');
+  const crumb = parts.slice(0, -1).map(p => p + ' / ').join('') + `<b>${parts.at(-1)}</b>`;
+  fileCard.innerHTML = `
+    <div class="crumb">${crumb}</div>
+    <div class="rows">
+      <div><span>lines</span><span>${b.lines.toLocaleString()}</span></div>
+      <div><span>size</span><span>${(b.bytes / 1024).toFixed(1)} KB</span></div>
+      ${b.commits ? `<div><span>commits</span><span>${b.commits}${b.commits >= HOT ? ' 🔥' : ''}</span></div>` : ''}
+      ${b.age != null ? `<div><span>last touched</span><span>${fmtAge(b.age)}</span></div>` : ''}
+    </div>
+    ${b.authors?.length ? `<h3>co-authors</h3><ul>${b.authors.map(([n, c]) => `<li><span>${n}</span><span>×${c}</span></li>`).join('')}</ul>` : ''}`;
+}
+
+document.getElementById('repoline').textContent =
+  `${city.name} — ${city.buildings.length} buildings · ${city.districts.length} districts` +
+  (hotB.length ? ` · ${hotB.length} hotspots` : '');
+{
+  const counts = {};
+  for (const b of city.buildings) counts[b.ext || '?'] = (counts[b.ext || '?'] || 0) + 1;
+  document.getElementById('legend').innerHTML = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1]).slice(0, 8)
+    .map(([e, n]) => `<div><span class="dot" style="background:#${extColor(e).getHexString()}"></span>${e || '—'} <span style="color:#56637a">${n}</span></div>`)
+    .join('');
+}
+document.getElementById('hint').innerHTML =
+  '<b>WASD / ZQSD / arrows</b> drive · <b>shift</b> boost<br><b>C</b> switch mode · glowing windows = hot files';
+
+// ---------- modes ----------
+let mode = null;
+const btnDrive = document.getElementById('btnDrive'), btnOrbit = document.getElementById('btnOrbit');
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI / 2 - 0.05;
+controls.maxDistance = 700;
+function setMode(mn) {
+  mode = mn;
+  const drive = mn === 'drive';
+  controls.enabled = !drive;
+  carGroup.visible = drive;
+  btnDrive.classList.toggle('on', drive);
+  btnOrbit.classList.toggle('on', !drive);
+  if (!drive) {
+    controls.target.set(car.pos.x, 2, car.pos.z);
+    setCurrent(null);
+  }
+}
+btnDrive.onclick = () => setMode('drive');
+btnOrbit.onclick = () => setMode('orbit');
+
+// post: render -> bloom (emissive only) -> tone map + sRGB
+const composer = new EffectComposer(renderer);
+composer.setPixelRatio(Math.min(devicePixelRatio, 2));
+composer.addPass(new RenderPass(scene, camera));
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.55, 0.4, 1.0));
+composer.addPass(new OutputPass());
+
+const stats = new Stats();
+stats.dom.style.cssText = 'position:fixed;top:10px;right:10px;';
+document.body.appendChild(stats.dom);
+
+// orbit mode: hover inspects, click flies
+function flyTo(b) {
+  let dir = new THREE.Vector3().subVectors(camera.position, controls.target).setY(0);
+  if (dir.lengthSq() < 1e-4) dir.set(1, 0, 1);
+  dir.normalize();
+  const dist = Math.max(25, b.h * 2.2, Math.max(b.w, b.d) * 4);
+  const pos = new THREE.Vector3(b.x, 0, b.z).addScaledVector(dir, dist).setY(Math.max(18, b.h * 1.6));
+  controls.enabled = false;
+  gsap.to(camera.position, { x: pos.x, y: pos.y, z: pos.z, duration: 1.4, ease: 'power3.inOut' });
+  gsap.to(controls.target, {
+    x: b.x, y: baseY(b) + b.h / 2, z: b.z, duration: 1.4, ease: 'power3.inOut',
+    onComplete: () => { controls.enabled = true; },
+  });
+}
+const ray = new THREE.Raycaster(), pointer = new THREE.Vector2(), tip = document.getElementById('tip');
+const pick = e => {
+  pointer.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  ray.setFromCamera(pointer, camera);
+  return ray.intersectObjects([hotMesh, coldMesh])[0];
+};
+addEventListener('pointermove', e => {
+  if (mode !== 'orbit' || e.target !== renderer.domElement) return;
+  const hit = pick(e);
+  setCurrent(hit ? hit.object.userData.list[hit.instanceId] : null);
+  if (hit) {
+    tip.style.display = 'block';
+    tip.style.left = e.clientX + 14 + 'px';
+    tip.style.top = e.clientY + 14 + 'px';
+    tip.innerHTML = `<b>${cur.path}</b><br>${cur.lines} lines · ${(cur.bytes / 1024).toFixed(1)} KB`;
+  } else tip.style.display = 'none';
+});
+let down = null;
+addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; });
+addEventListener('pointerup', e => {
+  if (mode !== 'orbit' || e.target !== renderer.domElement) return;
+  if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 5) return;
+  const hit = pick(e);
+  if (hit) flyTo(hit.object.userData.list[hit.instanceId]);
+});
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+
+// ?shot = deterministic orbit still for screenshot diffing, ?nobloom = raw render
+if (q.has('shot')) { setMode('orbit'); camera.position.set(150, 120, 150); controls.target.set(0, 0, 0); }
+else setMode('drive');
+
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (mode === 'drive') driveStep(dt); else controls.update();
+  if (q.has('nobloom')) renderer.render(scene, camera); else composer.render();
+  stats.update();
+});
+</script>
+</body>
+</html>
