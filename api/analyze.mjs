@@ -152,6 +152,12 @@ export default async function handler(req, res) {
     const history = await historyFromApi(owner, repo);
     const city = analyze(dir, repo, undefined, history);
     city.gh = `${owner}/${repo}`;
+    // degrading silently reads as "broken" — say why the history is missing
+    if (!history) {
+      city.note = process.env.GITHUB_TOKEN
+        ? 'built without history — GitHub API quota is busy, rebuild in a few minutes'
+        : 'built without history — server is missing GITHUB_TOKEN';
+    }
     // no git history -> no per-file authors, but one API call still gets the
     // real team: top contributors with avatars, baked as city.team for the gate
     const contribs = await fetch(`https://api.github.com/repos/${owner}/${repo}/contributors?per_page=10`, {

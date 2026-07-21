@@ -579,7 +579,8 @@ function closeViewer() { viewer.style.display = 'none'; viewerOpen = false; }
 document.getElementById('vclose').onclick = closeViewer;
 
 document.getElementById('repoline').textContent =
-  `${city.name} · ${city.buildings.length} files · ${team.map(([n]) => n).join(', ')}`;
+  [`${city.name} · ${city.buildings.length} files`, team.map(([n]) => n).join(', '), city.note && `⚠ ${city.note}`]
+    .filter(Boolean).join(' · ');
 setTimeout(() => document.getElementById('brand').classList.add('dim'), 6000);
 
 // ---------- post + adaptive quality ----------
