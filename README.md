@@ -2,7 +2,7 @@
 
 # 🏙️ CodeCity
 
-**Every repo is a city. Drive through yours.**
+**Every repo is a city. Drive through yours.** — [**drive it live →**](https://codecity-3d.vercel.app/)
 
 CodeCity turns any GitHub repository into a drivable 3D night city — then hands you the keys.
 

@@ -9,18 +9,18 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-<!-- social share (X, LinkedIn, Slack…). NOTE: change SITE_URL to your real domain once deployed -->
+<!-- social share (X, LinkedIn, Slack…). live at codecity-3d.vercel.app -->
 <meta property="og:type" content="website" />
 <meta property="og:title" content="CodeCity — drive through any GitHub repo as a 3D city" />
 <meta property="og:description" content="Every repo is a city. Buildings are files, districts are folders, glowing windows are your hottest code — and you drive through it." />
-<meta property="og:image" content="https://codecity.dev/og.png" />
+<meta property="og:image" content="https://codecity-3d.vercel.app/og.png" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
-<meta property="og:url" content="https://codecity.dev/" />
+<meta property="og:url" content="https://codecity-3d.vercel.app/" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="CodeCity — drive through any GitHub repo as a 3D city" />
 <meta name="twitter:description" content="Every repo is a city. Drive through yours." />
-<meta name="twitter:image" content="https://codecity.dev/og.png" />
+<meta name="twitter:image" content="https://codecity-3d.vercel.app/og.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=Instrument+Serif:ital@1&display=swap" rel="stylesheet" />
@@ -82,9 +82,7 @@
 <button class="fab" id="shareBtn" aria-label="share card (P)">
   <svg viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
 </button>
-<button class="fab" id="trailerBtn" aria-label="record a trailer clip (K)">
-  <svg viewBox="0 0 24 24"><path d="M2 8h20M7 3v5M12 3v5M17 3v5M2 3h20v18H2zM7 13h10v5H7z"/></svg>
-</button>
+<div id="recDot" aria-hidden="true"><span class="d"></span>REC</div>
 <div id="tl">
   <button id="tlPlay" aria-label="play / pause (Space)">
     <span class="swap">
