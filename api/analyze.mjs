@@ -16,10 +16,24 @@ const MAX_TAR = 80 << 20; // compressed tarball cap
 // the expensive part. Repos over the detail budget get an even SAMPLE across
 // their whole history with counts scaled back up — timelapse shape, heat
 // percentiles, and author rankings stay faithful; absolute numbers approximate.
-// GitHub's secondary rate limit allows ~900 REST calls/min — list pages +
-// detail fetches must stay under it or requests start 403ing mid-bake
-const MAX_DETAILS = 700; // full-detail budget (1 call each)
-const LIST_PAGES = 100;  // up to 10k most-recent commits listed (cheap)
+// One shared token serves every visitor, so per-bake API cost must stay small
+// or concurrent users trip GitHub's secondary limit (~900 pts/min) and everyone
+// drops to no-history. History is best-effort within a tight budget; the city
+// and the gate avatars never depend on it.
+const MAX_DETAILS = 220; // per-commit detail budget (1 call each) — bounds cost per bake
+const LIST_PAGES = 100;  // up to 10k most-recent commits listed (cheap: ~1 call/100 commits)
+const DETAIL_CONC = 6;   // gentle concurrency so a single bake doesn't burst the secondary limit
+
+const ok = r => r && r.ok;
+// retry once on a 403/secondary-limit blip so the cheap calls survive transient pressure
+async function ghFetch(url, tries = 2) {
+  for (let i = 0; i < tries; i++) {
+    const r = await fetch(url, { headers: ghHeaders(), signal: AbortSignal.timeout(10_000) }).catch(() => null);
+    if (ok(r)) return r;
+    if (r?.status === 403 && i < tries - 1) await new Promise(res => setTimeout(res, 1200));
+    else return r;
+  }
+}
 
 const ghHeaders = () => ({
   'user-agent': 'codecity', accept: 'application/vnd.github+json',
@@ -41,14 +55,13 @@ async function pmap(items, fn, n) {
 async function historyFromApi(owner, repo) {
   if (!process.env.GITHUB_TOKEN) return null;
   const base = `https://api.github.com/repos/${owner}/${repo}/commits?per_page=100`;
-  const page1 = await fetch(`${base}&page=1`, { headers: ghHeaders(), signal: AbortSignal.timeout(10_000) }).catch(() => null);
-  if (!page1?.ok) return null;
+  const page1 = await ghFetch(`${base}&page=1`);
+  if (!ok(page1)) return null; // rate-limited or error -> caller degrades with a note
   const firstBatch = await page1.json();
   if (!firstBatch.length) return null;
   const lastPage = Math.min(LIST_PAGES, +(/page=(\d+)>; rel="last"/.exec(page1.headers.get('link') || '')?.[1] ?? 1));
   const rest = await pmap(Array.from({ length: lastPage - 1 }, (_, i) => i + 2), p =>
-    fetch(`${base}&page=${p}`, { headers: ghHeaders(), signal: AbortSignal.timeout(10_000) })
-      .then(r => r.ok ? r.json() : []).catch(() => []), 16);
+    ghFetch(`${base}&page=${p}`, 1).then(r => ok(r) ? r.json() : []), 8);
   const shas = [firstBatch, ...rest].flat().map(c => c?.sha).filter(Boolean);
   if (!shas.length) return null;
   // over budget -> even sample across the whole span, counts scaled back later
@@ -59,9 +72,10 @@ async function historyFromApi(owner, repo) {
   }
   const factor = shas.length / sample.length;
   const details = await pmap(sample, sha =>
-    fetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}`, {
-      headers: ghHeaders(), signal: AbortSignal.timeout(10_000),
-    }).then(r => r.ok ? r.json() : null).catch(() => null), 24);
+    ghFetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}`, 1)
+      .then(r => ok(r) ? r.json() : null), DETAIL_CONC);
+  // if the sample mostly failed (secondary limit mid-bake), don't ship a half city's history
+  if (details.filter(Boolean).length < sample.length * 0.6) return null;
   // same shapes and identity-merge rule as gitStats in analyze.mjs
   const map = new Map(), ident = new Map();
   for (const c of details) {
@@ -160,9 +174,8 @@ export default async function handler(req, res) {
     }
     // no git history -> no per-file authors, but one API call still gets the
     // real team: top contributors with avatars, baked as city.team for the gate
-    const contribs = await fetch(`https://api.github.com/repos/${owner}/${repo}/contributors?per_page=10`, {
-      headers: ghHeaders(), signal: AbortSignal.timeout(8000),
-    }).then(r => r.ok ? r.json() : []).catch(() => []);
+    const contribs = await ghFetch(`https://api.github.com/repos/${owner}/${repo}/contributors?per_page=10`)
+      .then(r => ok(r) ? r.json() : []).catch(() => []);
     city.team = contribs
       .filter(c => c.type === 'User' && !c.login?.endsWith('[bot]'))
       .slice(0, 8)
