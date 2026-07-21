@@ -12,7 +12,10 @@ import { analyze } from '../analyze.mjs';
 const GH = /^(?:https?:\/\/)?(?:www\.)?(?:github\.com\/)?([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/;
 const MAX_KB = 150_000; // GitHub-reported repo size cap (KB) — beyond this, run locally
 const MAX_TAR = 80 << 20; // compressed tarball cap
-const MAX_API_COMMITS = 300; // API history: 1 call per commit — beyond this, tree-only
+// API history: 1 call per commit, 16-way concurrent (~25s at the cap; ~30% of a
+// token's hourly quota) — beyond this, tree-only. ponytail: fixed cap, no
+// adaptive budgeting until real traffic says otherwise
+const MAX_API_COMMITS = 1500;
 
 const ghHeaders = () => ({
   'user-agent': 'codecity', accept: 'application/vnd.github+json',
