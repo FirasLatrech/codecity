@@ -94,13 +94,6 @@ Big repos stay fast by design: only the ~3,500 biggest files are kept, history p
 node analyze.mjs --check   # analyzer self-test
 ```
 
-## 🤝 Contributing
-
-PRs welcome! The ground rules live in [CLAUDE.md](CLAUDE.md) — the short version:
-
-- buildings are **always** `InstancedMesh`, layout math stays in the analyzer, thresholds are percentiles (never absolute), and no new dependencies for anything a few lines can do
-- a new car is one entry in `CARS` (`src/car.js`) — body, handling spec, engine profile — and nothing else
-
 ## 📄 License
 
 [MIT](LICENSE)
