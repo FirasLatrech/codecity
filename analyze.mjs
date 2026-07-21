@@ -212,7 +212,9 @@ function prune(node, min) {
   return node;
 }
 
-export function analyze(repoPath, name, emailAvatars) {
+// gitOverride: pre-computed history map in gitStats' shape — lets environments
+// without a git binary (serverless) supply history from the GitHub API instead.
+export function analyze(repoPath, name, emailAvatars, gitOverride) {
   const repo = resolve(repoPath);
   const root = walk(repo, '');
   if (!root.size) throw new Error(`no readable text files found in ${repo}`);
@@ -223,7 +225,7 @@ export function analyze(repoPath, name, emailAvatars) {
   }
   const city = build(root, name || basename(repo));
   city.root = repo; // the /raw endpoint (vite.config.js) reads file contents from here for the in-city viewer
-  const git = gitStats(repo, emailAvatars);
+  const git = gitOverride ?? gitStats(repo, emailAvatars);
   if (git) {
     const now = Date.now() / 1000;
     // repo lifespan -> timelapse timeline; per-building growth = commits per 1/32 of that span
