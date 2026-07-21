@@ -16,8 +16,10 @@ const MAX_TAR = 80 << 20; // compressed tarball cap
 // the expensive part. Repos over the detail budget get an even SAMPLE across
 // their whole history with counts scaled back up — timelapse shape, heat
 // percentiles, and author rankings stay faithful; absolute numbers approximate.
-const MAX_DETAILS = 1500; // full-detail budget (1 call each, 16-way concurrent)
-const LIST_PAGES = 100;   // up to 10k most-recent commits listed
+// GitHub's secondary rate limit allows ~900 REST calls/min — list pages +
+// detail fetches must stay under it or requests start 403ing mid-bake
+const MAX_DETAILS = 700; // full-detail budget (1 call each)
+const LIST_PAGES = 100;  // up to 10k most-recent commits listed (cheap)
 
 const ghHeaders = () => ({
   'user-agent': 'codecity', accept: 'application/vnd.github+json',
