@@ -141,7 +141,20 @@ function untar(buf, dest) {
 }
 
 export default async function handler(req, res) {
-  const m = GH.exec(String(req.query.url || '').trim());
+  const url = String(req.query.url || '').trim();
+  // If a git-powered analyze server is configured (Railway/Render), proxy to it:
+  // real `git clone` history for any repo, no per-commit API cost, no rate limits.
+  // Falls through to the serverless bake below if the box is unreachable.
+  if (process.env.ANALYZE_SERVER) {
+    try {
+      const r = await fetch(`${process.env.ANALYZE_SERVER}/analyze?url=${encodeURIComponent(url)}`, {
+        signal: AbortSignal.timeout(60_000),
+      });
+      const body = await r.json();
+      return res.status(r.status).json(body);
+    } catch { /* box down — fall back to the serverless bake */ }
+  }
+  const m = GH.exec(url);
   if (!m) return res.status(400).json({ error: 'that does not look like a GitHub repo — try github.com/owner/repo' });
   const [, owner, repo] = m;
   const dir = join('/tmp', `${owner}__${repo}`);
