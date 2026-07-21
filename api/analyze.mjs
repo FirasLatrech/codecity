@@ -65,6 +65,19 @@ export default async function handler(req, res) {
     untar(gunzipSync(gz, { maxOutputLength: 400 << 20 }), dir);
     const city = analyze(dir, repo); // tree-only: serverless has no git
     city.gh = `${owner}/${repo}`;
+    // no git history -> no per-file authors, but one API call still gets the
+    // real team: top contributors with avatars, baked as city.team for the gate
+    const contribs = await fetch(`https://api.github.com/repos/${owner}/${repo}/contributors?per_page=10`, {
+      headers: {
+        'user-agent': 'codecity', accept: 'application/vnd.github+json',
+        ...(process.env.GITHUB_TOKEN ? { authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}),
+      },
+      signal: AbortSignal.timeout(8000),
+    }).then(r => r.ok ? r.json() : []).catch(() => []);
+    city.team = contribs
+      .filter(c => c.type === 'User' && !c.login?.endsWith('[bot]'))
+      .slice(0, 8)
+      .map(c => [c.login, c.contributions, `${c.avatar_url}&s=256`]);
     res.status(200).json({ name: repo, city });
   } catch {
     res.status(500).json({ error: 'analyze failed — try a smaller repo, or run CodeCity locally for the full experience' });

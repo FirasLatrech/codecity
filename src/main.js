@@ -203,7 +203,10 @@ const { buildingsMesh, beaconMat, HOT, groundY, setCityTime, timeline: TL } = bu
 // ---------- faces: the team greets you at the gate, top authors float over hot buildings ----------
 const contrib = Object.create(null); // author names are untrusted — keep Object.prototype out of the roster
 for (const b of city.buildings) for (const [n, c, h] of b.authors ?? []) { const e = contrib[n] ??= { n: 0, h }; e.n += c; }
-const team = Object.entries(contrib).sort((a, b) => b[1].n - a[1].n).slice(0, 5);
+let team = Object.entries(contrib).sort((a, b) => b[1].n - a[1].n).slice(0, 5);
+// hosted bakes have no per-file git data — the analyzer ships a repo-level
+// team (GitHub contributors API) instead, same [name, {n, h}] shape
+if (!team.length && city.team?.length) team = city.team.slice(0, 5).map(([n, c, h]) => [n, { n: c, h }]);
 const gate = [];
 // contribution pyramid: #1 front and center, big and high; the rest fan out
 // left/right, lower, smaller, and further back — size follows commit share
