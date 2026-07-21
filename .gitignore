@@ -1,4 +1,6 @@
-public/city.json
+public/cities/
+.cache/
+.env*
 node_modules
 dist
 .DS_Store

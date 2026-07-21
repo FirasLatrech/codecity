@@ -1,9 +1,10 @@
-#!/usr/bin/env node
-// CodeCity analyzer — walks a repo, lays out a treemap city, writes city.json.
-// Usage: node analyze.mjs [repoPath]     (writes ./public/city.json)
+// CodeCity analyzer — walks a repo, lays out a treemap city, produces a city object.
+// Usage: node analyze.mjs [repoPath]     (writes ./public/cities/<name>.json)
 //        node analyze.mjs --check        (runs layout self-test, no repo needed)
-import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+// Also importable: analyze(repoPath, name?) → city  (used by the /analyze endpoint in vite.config.js)
+import { readdirSync, readFileSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, extname, basename, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import assert from 'node:assert';
@@ -28,8 +29,14 @@ function walk(dir, relPath) {
       if (bytes > 2_000_000) continue; // huge = probably an asset, not code
       let buf;
       try { buf = readFileSync(p); } catch { continue; }
-      if (buf.includes(0)) continue; // binary
-      const lines = buf.length ? buf.toString('utf8').split('\n').length : 0;
+      // one byte pass: binary sniff + newline count, no utf8 decode (big-repo speed)
+      let lines = 0, binary = false;
+      for (let i = 0; i < buf.length; i++) {
+        if (buf[i] === 0) { binary = true; break; }
+        if (buf[i] === 10) lines++;
+      }
+      if (binary) continue;
+      if (buf.length && buf[buf.length - 1] !== 10) lines++;
       node.files.push({ name: e.name, ext: extname(e.name).toLowerCase(), lines, bytes: Math.max(bytes, 1) });
       node.size += Math.max(bytes, 1);
     }
@@ -130,10 +137,13 @@ function check() {
 }
 
 // One `git log` pass -> per-file { commits, last touch }. Null if not a git repo.
+// emailAvatars: optional email -> avatar URL map (GitHub API-resolved) that beats the local guesses.
 // ponytail: paths are repo-root-relative — analyzing a subdir of a repo won't match; run from the repo root.
-function gitStats(repo) {
+function gitStats(repo, emailAvatars = {}) {
   try {
-    const out = execSync("git log '--format=%ct|%ae|%an' --name-only --no-renames", {
+    // ponytail: history capped at 50k commits — on monster repos the timelapse shows the
+    // recent 50k, which is still a great show; drop the cap if someone needs full linux history
+    const out = execSync("git log --max-count=50000 '--format=%ct|%ae|%an' --name-only --no-renames", {
       cwd: repo, maxBuffer: 128 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'],
     }).toString();
     const map = new Map();
@@ -149,22 +159,31 @@ function gitStats(repo) {
         const email = h[2].trim().toLowerCase(), name = h[3];
         key = name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5) || email;
         let id = ident.get(key);
-        if (!id) ident.set(key, id = { names: {}, avatar: '', gh: false });
+        // Object.create(null): author names/emails are attacker-controlled strings —
+        // a commit authored as "constructor" must not hit Object.prototype
+        if (!id) ident.set(key, id = { names: Object.create(null), avatar: '', gh: false });
         id.names[name] = (id.names[name] || 0) + 1;
-        // GitHub noreply emails carry a guaranteed avatar — prefer it over gravatar guesses
+        // avatar priority: GitHub API-resolved email > noreply-derived > gravatar guess
+        if (Object.hasOwn(emailAvatars, email) && !id.gh) {
+          id.gh = true;
+          id.avatar = emailAvatars[email];
+        }
         const gh = /^(?:(\d+)\+)?([^@]+)@users\.noreply\.github\.com$/.exec(email);
         if (gh && !id.gh) {
           id.gh = true;
-          id.avatar = gh[1] ? `https://avatars.githubusercontent.com/u/${gh[1]}?s=256` : `https://github.com/${gh[2]}.png?size=256`;
+          // /u/<id> for new-style noreply, /<username> for old-style — both CORS-safe (github.com/<user>.png is not)
+          id.avatar = gh[1] ? `https://avatars.githubusercontent.com/u/${gh[1]}?s=256` : `https://avatars.githubusercontent.com/${gh[2]}?s=256`;
         } else if (!id.avatar) {
           id.avatar = `https://www.gravatar.com/avatar/${createHash('md5').update(email).digest('hex')}?s=256&d=404`;
         }
         continue;
       }
       let s = map.get(line);
-      if (!s) map.set(line, s = { commits: 0, last: 0, authors: {} });
+      if (!s) map.set(line, s = { commits: 0, last: 0, first: Infinity, times: [], authors: Object.create(null) });
       s.commits++;
       if (t > s.last) s.last = t;
+      if (t < s.first) s.first = t;
+      s.times.push(t); // full history per file — bucketed into the growth curve later
       const a = s.authors[key] ||= { n: 0 };
       a.n++;
     }
@@ -179,17 +198,42 @@ function gitStats(repo) {
   } catch { return null; }
 }
 
-if (process.argv[2] === '--check') {
-  check();
-} else {
-  const repo = resolve(process.argv[2] || '.');
+const MAX_FILES = 3500; // ponytail: giant repos keep only their biggest files — city stays light + drivable
+
+function collectSizes(node, out = []) {
+  for (const f of node.files) out.push(f.bytes);
+  for (const d of node.dirs) collectSizes(d, out);
+  return out;
+}
+function prune(node, min) {
+  node.files = node.files.filter(f => f.bytes >= min);
+  node.dirs = node.dirs.filter(d => prune(d, min).size > 0);
+  node.size = node.files.reduce((s, f) => s + f.bytes, 0) + node.dirs.reduce((s, d) => s + d.size, 0);
+  return node;
+}
+
+export function analyze(repoPath, name, emailAvatars) {
+  const repo = resolve(repoPath);
   const root = walk(repo, '');
-  if (!root.size) { console.error(`no readable text files found in ${repo}`); process.exit(1); }
-  const city = build(root, basename(repo));
+  if (!root.size) throw new Error(`no readable text files found in ${repo}`);
+  const sizes = collectSizes(root).sort((a, b) => b - a);
+  if (sizes.length > MAX_FILES) {
+    prune(root, sizes[MAX_FILES - 1]);
+    console.log(`big repo: keeping the ~${MAX_FILES} biggest of ${sizes.length} files`);
+  }
+  const city = build(root, name || basename(repo));
   city.root = repo; // the /raw endpoint (vite.config.js) reads file contents from here for the in-city viewer
-  const git = gitStats(repo);
+  const git = gitStats(repo, emailAvatars);
   if (git) {
     const now = Date.now() / 1000;
+    // repo lifespan -> timelapse timeline; per-building growth = commits per 1/32 of that span
+    let t0 = Infinity, t1 = 0;
+    for (const s of git.values()) {
+      if (s.first < t0) t0 = s.first;
+      if (s.last > t1) t1 = s.last;
+    }
+    const B = 32, span = Math.max(1, t1 - t0);
+    if (t1 > 0) city.timeline = { start: t0, end: t1, buckets: B };
     for (const b of city.buildings) {
       const s = git.get(b.path);
       if (s) {
@@ -197,9 +241,26 @@ if (process.argv[2] === '--check') {
         b.age = Math.max(0, Math.round((now - s.last) / 86400));
         b.authors = Object.values(s.authors).sort((a, z) => z.n - a.n).slice(0, 3)
           .map(a => [a.name, a.n, a.h]); // top 3 co-authors [name, commits, avatarURL]
+        b.born = s.first;
+        const g = new Array(B).fill(0);
+        for (const t of s.times) g[Math.min(B - 1, Math.floor(((t - t0) / span) * B))]++;
+        b.g = g;
       }
     }
   }
-  writeFileSync(new URL('./public/city.json', import.meta.url), JSON.stringify(city));
-  console.log(`${city.name}: ${city.buildings.length} buildings, ${city.districts.length} districts${git ? ', git-enriched' : ''} -> city.json`);
+  return city;
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  if (process.argv[2] === '--check') {
+    check();
+  } else {
+    try {
+      const city = analyze(process.argv[2] || '.');
+      const dir = fileURLToPath(new URL('./public/cities/', import.meta.url));
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, `${city.name}.json`), JSON.stringify(city));
+      console.log(`${city.name}: ${city.buildings.length} buildings, ${city.districts.length} districts -> http://localhost:8137/${city.name}`);
+    } catch (e) { console.error(e.message); process.exit(1); }
+  }
 }
