@@ -14,8 +14,8 @@ import { analyze } from '../analyze.mjs';
 const run = promisify(execFile);
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
-// keep in sync with the #explore chips in index.html
-const EXAMPLES = ['facebook/react', 'vitejs/vite', 'expressjs/express', 'chalk/chalk', 'honojs/hono', 'sindresorhus/slugify'];
+// keep in sync with the #explore postcards in index.html
+const EXAMPLES = ['FirasLatrech/reqlog', 'honojs/hono', 'expressjs/express'];
 
 const gh = () => ({
   'user-agent': 'codecity',
@@ -72,8 +72,11 @@ async function bake(owner, repo) {
 }
 
 const only = process.argv.slice(2);
+let failed = 0;
 for (const spec of EXAMPLES) {
   const [owner, repo] = spec.split('/');
   if (only.length && !only.includes(repo)) continue;
-  await bake(owner, repo);
+  // one broken example shouldn't sink the whole deploy — its card falls back to the seeded skyline
+  try { await bake(owner, repo); } catch (e) { failed++; console.error(`skipping ${spec}: ${e.message}`); }
 }
+if (failed) console.error(`${failed} example(s) failed to bake`);

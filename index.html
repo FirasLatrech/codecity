@@ -82,6 +82,9 @@
 <button class="fab" id="shareBtn" aria-label="share card (P)">
   <svg viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
 </button>
+<button class="fab" id="trailerBtn" aria-label="record a trailer clip (K)">
+  <svg viewBox="0 0 24 24"><path d="M2 8h20M7 3v5M12 3v5M17 3v5M2 3h20v18H2zM7 13h10v5H7z"/></svg>
+</button>
 <div id="tl">
   <button id="tlPlay" aria-label="play / pause (Space)">
     <span class="swap">
@@ -126,14 +129,20 @@
     </footer>
     <div id="homeStatus"></div>
     <div id="explore">
-      <span class="ex-label">or roll into a public city</span>
-      <div class="ex-chips">
-        <button type="button" data-repo="facebook/react">react</button>
-        <button type="button" data-repo="vitejs/vite">vite</button>
-        <button type="button" data-repo="expressjs/express">express</button>
-        <button type="button" data-repo="chalk/chalk">chalk</button>
-        <button type="button" data-repo="honojs/hono">hono</button>
-        <button type="button" data-repo="sindresorhus/slugify">slugify</button>
+      <span class="ex-label">tonight's open cities</span>
+      <div class="ex-cards">
+        <button type="button" class="citycard" data-repo="FirasLatrech/reqlog">
+          <canvas width="264" height="80" aria-hidden="true"></canvas>
+          <span class="cc-row"><span class="cc-name">reqlog</span><span class="cc-meta"></span></span>
+        </button>
+        <button type="button" class="citycard" data-repo="honojs/hono">
+          <canvas width="264" height="80" aria-hidden="true"></canvas>
+          <span class="cc-row"><span class="cc-name">hono</span><span class="cc-meta"></span></span>
+        </button>
+        <button type="button" class="citycard" data-repo="expressjs/express">
+          <canvas width="264" height="80" aria-hidden="true"></canvas>
+          <span class="cc-row"><span class="cc-name">express</span><span class="cc-meta"></span></span>
+        </button>
       </div>
     </div>
   </div>

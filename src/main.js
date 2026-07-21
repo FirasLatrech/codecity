@@ -12,6 +12,7 @@ import { CARS, createCar, setCarType, driveStep } from './car.js';
 import { composeCard } from './share.js';
 import { createGame } from './game.js';
 import { createRace } from './race.js';
+import { createTrailer } from './trailer.js';
 
 // ---------- routing: /<repoName> drives that city, / is the landing page ----------
 const repoName = decodeURIComponent(location.pathname.split('/')[1] || '');
@@ -56,9 +57,49 @@ function home(message) {
       }, 320);
     });
   }, 2600);
-  // "explore a public city" chips — one click fills the field and builds it
-  for (const chip of el.querySelectorAll('#explore button'))
-    chip.onclick = () => { input.value = chip.dataset.repo; form.requestSubmit(); };
+  // city postcards — each example drawn as its repo's REAL skyline from the baked
+  // city (tallest buildings, amber windows on the hot ones, beacon on the tower);
+  // seeded fake skyline until the bake exists so the cards never look broken
+  const seeded = s => { let x = [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) || 7;
+    return () => (x = (x * 48271) % 2147483647) / 2147483647; };
+  async function postcard(card) {
+    const repo = card.dataset.repo.split('/')[1];
+    const cv = card.querySelector('canvas'), ctx = cv.getContext('2d');
+    const W = cv.width, H = cv.height;
+    let bars = null;
+    try {
+      const r = await fetch(`/cities/${repo}.json`);
+      const c = r.ok && r.headers.get('content-type')?.includes('json') ? await r.json() : null;
+      if (c) {
+        const top = [...c.buildings].sort((a, b) => b.h - a.h).slice(0, 26).sort((a, b) => a.x - b.x);
+        const max = Math.max(...top.map(b => b.h), 1);
+        const p75 = [...top.map(b => b.commits || 0)].sort((a, b) => a - b)[Math.floor(top.length * .75)] || 1;
+        bars = top.map(b => ({ h: b.h / max, hot: (b.commits || 0) >= p75 }));
+        card.querySelector('.cc-meta').textContent = `${c.buildings.length} buildings`;
+      }
+    } catch {}
+    const rnd = seeded(repo);
+    if (!bars) bars = Array.from({ length: 22 }, () => ({ h: .2 + rnd() * .8, hot: rnd() < .2 }));
+    const n = bars.length, bw = W / n;
+    bars.forEach((b, i) => {
+      const bh = Math.max(8, b.h * (H - 12));
+      ctx.fillStyle = '#22222a';
+      ctx.fillRect(i * bw + 1.5, H - bh, bw - 3, bh);
+      const wins = b.hot ? 3 : rnd() < .4 ? 1 : 0;
+      ctx.fillStyle = '#fbbf24';
+      for (let w = 0; w < wins; w++)
+        ctx.fillRect(i * bw + 3 + rnd() * (bw - 8), H - bh + 4 + rnd() * Math.max(1, bh - 10), 2.5, 3.5);
+    });
+    const t = bars.reduce((m, b, i) => (b.h > bars[m].h ? i : m), 0);
+    ctx.fillStyle = '#f87171';
+    ctx.beginPath();
+    ctx.arc(t * bw + bw / 2, H - bars[t].h * (H - 12) - 5, 2.5, 0, 7);
+    ctx.fill();
+  }
+  for (const card of el.querySelectorAll('.citycard')) {
+    card.onclick = () => { input.value = card.dataset.repo; form.requestSubmit(); };
+    postcard(card);
+  }
   form.onsubmit = async e => {
     e.preventDefault();
     if (!input.value.trim()) return;
@@ -376,6 +417,7 @@ addEventListener('keydown', ev => {
   const e = { code: keyCode(ev), preventDefault: () => ev.preventDefault() };
   initAudio();
   if (recState) return; // don't disturb the take
+  if (trailer.active) { if (e.code === 'Escape' || e.code === 'KeyK') trailer.cancel(); return; }
   if (shot) return; // ?shot is a deterministic still — keys would strand its camera
   if (shareOpen) {
     if (e.code === 'Escape' || e.code === 'KeyP') closeShare();
@@ -397,6 +439,7 @@ addEventListener('keydown', ev => {
   if (e.code === 'KeyP') openShare();
   if (e.code === 'KeyG') document.getElementById('playBtn').click();
   if (e.code === 'KeyR') document.getElementById('raceBtn').click();
+  if (e.code === 'KeyK') trailerBtn.click();
   if (e.code === 'KeyE' && cur) openFile(cur);
   if (KEY[e.code]) { keys[KEY[e.code]] = true; e.preventDefault(); }
 });
@@ -558,6 +601,24 @@ function applyTier(i) {
 }
 applyTier(0);
 
+// ---------- one-click cinematic trailer (records a captioned 1080p WebM) ----------
+const trailerBtn = document.getElementById('trailerBtn');
+const trailer = createTrailer({
+  camera, glCanvas: renderer.domElement, city,
+  setCityTime, uToSec, hasTL: !!TL,
+  setLiveShadows,
+  applyTier, getTier: () => tier,
+  hideDecor: hide => {
+    for (const s of landmarkSigns) s.visible = !hide;
+    for (const r of residents) r.s.visible = !hide;
+    carRig.group.visible = !hide; // the parked car shouldn't sit in the hero shots
+  },
+  onBefore: () => { if (tlOpen) setTimeline(false); if (viewerOpen) closeViewer(); game.stop(); race.stop(); setCurrent(null); trailerBtn.classList.add('on'); },
+  onDone: () => { carRig.group.visible = true; trailerBtn.classList.remove('on'); },
+});
+trailerBtn.onclick = () => trailer.active ? trailer.cancel() : trailer.start();
+tooltip(trailerBtn, () => trailer.active ? 'stop recording' : 'record a trailer — K');
+
 let frames = 0, acc = 0, calm = 0, aqNow = 0, upgradedAt = -1e9, banned = -1;
 function autoQuality(dt) {
   aqNow += dt;
@@ -598,7 +659,9 @@ let t = 0;
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05);
   t += dt;
-  if (recState) {
+  if (trailer.active) {
+    trailer.update(dt);
+  } else if (recState) {
     // one full orbit while the city grows from nothing — the money shot
     recState.t += dt;
     const p = Math.min(1, recState.t / recState.dur);
@@ -627,9 +690,10 @@ renderer.setAnimationLoop(() => {
   for (const r of residents) r.s.position.set(r.b.x, baseY(r.b) + r.b.h + 3.6 + Math.sin(t * 1.6 + r.ph) * 0.35, r.b.z);
   for (const s of gate) s.s.position.y = s.y0 + Math.sin(t * 1.3 + s.ph) * 0.3;
   if (cur && inspectFace.visible) inspectFace.position.set(cur.x, baseY(cur) + cur.h + 3, cur.z);
-  engine(carRig.car.speed, !viewerOpen && !tlOpen && !shareOpen && !recState);
-  if (!shot && !shareOpen && !recState) autoQuality(dt); // ?shot stays deterministic; captures stay max-quality
+  engine(carRig.car.speed, !viewerOpen && !tlOpen && !shareOpen && !recState && !trailer.active);
+  if (!shot && !shareOpen && !recState && !trailer.active) autoQuality(dt); // ?shot & captures stay max-quality
   if (composer) composer.render(); else renderer.render(scene, camera);
+  trailer.composite(); // draw the GL frame + captions into the recorder canvas (no-op when idle)
   if (captureNext) { captureNext = false; finishCapture(); }
   stats?.update();
 });

@@ -81,15 +81,26 @@ body.city #cityShare { display: flex; align-items: center; }
 #copyLink.done svg { animation: none; }
 
 /* ---------- landing: explore public cities ---------- */
-#explore { margin-top: 26px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+/* city postcards — real mini skylines drawn from the baked cities */
+#explore { margin-top: 28px; display: flex; flex-direction: column; align-items: center; gap: 12px;
+           opacity: 0; animation: fade-up .55s var(--ease) 1.15s forwards; }
 .ex-label { font-size: 12px; color: rgba(255, 255, 255, .38); letter-spacing: .02em; }
-.ex-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 440px; }
-.ex-chips button { height: 32px; padding: 0 14px; border-radius: 9999px; font: 500 13px/1 var(--sans);
-                   color: rgba(255, 255, 255, .75); background: rgba(255, 255, 255, .05);
-                   border: 1px solid rgba(255, 255, 255, .1);
-                   transition: background-color .15s ease-out, color .15s ease-out, border-color .15s ease-out; }
-.ex-chips button:hover { background: rgba(99, 102, 241, .16); border-color: rgba(99, 102, 241, .5); color: #fff; }
-.ex-chips button:active { transform: scale(.97); }
+.ex-cards { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+.citycard { display: flex; flex-direction: column; gap: 8px; width: 152px; padding: 10px 10px 11px;
+            border-radius: 16px; text-align: left; cursor: pointer;
+            background: rgba(255, 255, 255, .04); border: 1px solid rgba(255, 255, 255, .09);
+            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+            box-shadow: var(--pill-shadow);
+            transition: transform .3s var(--ease), background-color .15s ease-out, border-color .15s ease-out; }
+.citycard:hover { transform: translateY(-4px); background: rgba(255, 255, 255, .08);
+                  border-color: rgba(255, 255, 255, .18); }
+.citycard:active { transform: translateY(-1px) scale(.98); }
+.citycard canvas { width: 132px; height: 40px; display: block; border-radius: 9px;
+                   background: linear-gradient(#0b0b0d, #131316); transition: filter .25s ease-out; }
+.citycard:hover canvas { filter: brightness(1.35); }
+.cc-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.cc-name { font: 500 13px/1 var(--sans); color: rgba(255, 255, 255, .85); }
+.cc-meta { font-size: 10.5px; color: rgba(255, 255, 255, .38); white-space: nowrap; }
 
 /* ---------- fabs ---------- */
 .fab { position: fixed; right: 16px; z-index: 2; width: 44px; height: 44px; border-radius: 9999px;
@@ -97,7 +108,12 @@ body.city #cityShare { display: flex; align-items: center; }
        transition: background-color .15s ease-out, transform .15s ease-out, color .15s ease-out; }
 .fab:hover { background-color: rgba(255, 255, 255, .1); color: #fff; }
 .fab:active { transform: scale(.98); }
-#carBtn { top: 16px; } #sndBtn { top: 68px; } #tlBtn { top: 120px; } #shareBtn { top: 172px; }
+#carBtn { top: 16px; } #sndBtn { top: 68px; } #tlBtn { top: 120px; } #shareBtn { top: 172px; } #trailerBtn { top: 224px; }
+/* recording: red glow + slow pulse so you know a take is rolling */
+#trailerBtn.on { color: #fff; background-color: #e5484d; border-color: rgba(255, 255, 255, .15);
+                 box-shadow: inset 0 -4px 4px rgba(140, 20, 20, .6); animation: recPulse 1.4s ease-in-out infinite; }
+#trailerBtn.on:hover { background-color: #eb5d61; }
+@keyframes recPulse { 50% { box-shadow: inset 0 -4px 4px rgba(140, 20, 20, .6), 0 0 0 6px rgba(229, 72, 77, .18); } }
 
 /* icons — lucide strokes; hover tilts like the agency logo */
 .fab svg { width: 19px; height: 19px; fill: none; stroke: currentColor;
