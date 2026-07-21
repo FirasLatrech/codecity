@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // CodeCity analyzer — walks a repo, lays out a treemap city, writes city.json.
-// Usage: node analyze.mjs [repoPath]     (writes ./city.json)
+// Usage: node analyze.mjs [repoPath]     (writes ./public/city.json)
 //        node analyze.mjs --check        (runs layout self-test, no repo needed)
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, extname, basename, resolve } from 'node:path';
@@ -137,23 +137,44 @@ function gitStats(repo) {
       cwd: repo, maxBuffer: 128 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'],
     }).toString();
     const map = new Map();
-    let t = 0, author = '', avatar = '';
+    // ponytail: identities merged by first-5-letters of normalized name — the same human often
+    // commits as both "Firas_Latrach <work email>" and "FirasLatrech <github noreply>"
+    const ident = new Map(); // key -> { names: {raw: count}, avatar, gh }
+    let t = 0, key = '';
     for (const line of out.split('\n')) {
       if (!line) continue;
       const h = /^(\d+)\|([^|]*)\|(.*)$/.exec(line);
       if (h) {
         t = +h[1];
-        author = h[3];
-        avatar = createHash('md5').update(h[2].trim().toLowerCase()).digest('hex'); // gravatar hash
+        const email = h[2].trim().toLowerCase(), name = h[3];
+        key = name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5) || email;
+        let id = ident.get(key);
+        if (!id) ident.set(key, id = { names: {}, avatar: '', gh: false });
+        id.names[name] = (id.names[name] || 0) + 1;
+        // GitHub noreply emails carry a guaranteed avatar — prefer it over gravatar guesses
+        const gh = /^(?:(\d+)\+)?([^@]+)@users\.noreply\.github\.com$/.exec(email);
+        if (gh && !id.gh) {
+          id.gh = true;
+          id.avatar = gh[1] ? `https://avatars.githubusercontent.com/u/${gh[1]}?s=128` : `https://github.com/${gh[2]}.png?size=128`;
+        } else if (!id.avatar) {
+          id.avatar = `https://www.gravatar.com/avatar/${createHash('md5').update(email).digest('hex')}?s=128&d=404`;
+        }
         continue;
       }
       let s = map.get(line);
       if (!s) map.set(line, s = { commits: 0, last: 0, authors: {} });
       s.commits++;
       if (t > s.last) s.last = t;
-      const a = s.authors[author] ||= { n: 0, h: avatar };
+      const a = s.authors[key] ||= { n: 0 };
       a.n++;
     }
+    // resolve each identity key to its most-used display name + best avatar
+    for (const s of map.values())
+      for (const k of Object.keys(s.authors)) {
+        const id = ident.get(k);
+        s.authors[k].name = Object.entries(id.names).sort((a, b) => b[1] - a[1])[0][0];
+        s.authors[k].h = id.avatar;
+      }
     return map;
   } catch { return null; }
 }
@@ -165,7 +186,7 @@ if (process.argv[2] === '--check') {
   const root = walk(repo, '');
   if (!root.size) { console.error(`no readable text files found in ${repo}`); process.exit(1); }
   const city = build(root, basename(repo));
-  city.root = repo; // server.mjs reads file contents from here for the in-city viewer
+  city.root = repo; // the /raw endpoint (vite.config.js) reads file contents from here for the in-city viewer
   const git = gitStats(repo);
   if (git) {
     const now = Date.now() / 1000;
@@ -174,11 +195,11 @@ if (process.argv[2] === '--check') {
       if (s) {
         b.commits = s.commits;
         b.age = Math.max(0, Math.round((now - s.last) / 86400));
-        b.authors = Object.entries(s.authors).sort((a, z) => z[1].n - a[1].n).slice(0, 3)
-          .map(([name, a]) => [name, a.n, a.h]); // top 3 co-authors [name, commits, gravatarHash]
+        b.authors = Object.values(s.authors).sort((a, z) => z.n - a.n).slice(0, 3)
+          .map(a => [a.name, a.n, a.h]); // top 3 co-authors [name, commits, avatarURL]
       }
     }
   }
-  writeFileSync(new URL('./city.json', import.meta.url), JSON.stringify(city));
+  writeFileSync(new URL('./public/city.json', import.meta.url), JSON.stringify(city));
   console.log(`${city.name}: ${city.buildings.length} buildings, ${city.districts.length} districts${git ? ', git-enriched' : ''} -> city.json`);
 }

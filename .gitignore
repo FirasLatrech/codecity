@@ -1,2 +1,4 @@
-city.json
+public/city.json
+node_modules
+dist
 .DS_Store

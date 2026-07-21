@@ -1,0 +1,30 @@
+html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0e14; font: 13px/1.45 ui-monospace, monospace; }
+#brand { position: fixed; top: 14px; left: 16px; z-index: 2; color: #e6edf3; user-select: none; transition: opacity 1.2s; }
+#brand h1 { font-size: 15px; margin: 0; letter-spacing: .1em; }
+#brand span { font-size: 11px; color: #56637a; }
+#brand.dim { opacity: .3; }
+.fab { position: fixed; right: 16px; z-index: 2; width: 42px; height: 42px; border-radius: 50%;
+       background: rgba(14,19,27,.75); border: 1px solid #2d3644; backdrop-filter: blur(8px);
+       font-size: 18px; cursor: pointer; display: grid; place-items: center; }
+#modeBtn { top: 14px; } #sndBtn { top: 64px; }
+#card { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(12px); z-index: 2;
+        display: flex; align-items: center; gap: 13px; max-width: min(760px, 92vw);
+        background: rgba(11,15,22,.82); border: 1px solid #2d3644; border-radius: 16px;
+        padding: 11px 17px; backdrop-filter: blur(12px);
+        opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; }
+#card.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#card .faces { display: flex; }
+#card .faces img { width: 38px; height: 38px; border-radius: 50%; border: 2px solid #2d3644; background: #0e131b; }
+#card .faces img + img { margin-left: -12px; }
+#card .path { color: #56637a; word-break: break-all; }
+#card .path b { color: #7ee0a3; }
+#card .meta { color: #8b98a9; font-size: 12px; margin-top: 2px; }
+#card .meta em { color: #cdd6e0; font-style: normal; }
+#viewer { position: fixed; inset: 5% 8%; z-index: 5; display: none; flex-direction: column;
+          background: rgba(9,12,18,.97); border: 1px solid #2d3644; border-radius: 14px; overflow: hidden; }
+#vhead { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+         padding: 12px 18px; border-bottom: 1px solid #1d2530; color: #7ee0a3; }
+#vhead button { background: none; border: none; color: #8b98a9; font: inherit; font-size: 16px; cursor: pointer; }
+#vbody { margin: 0; padding: 16px 20px; overflow: auto; flex: 1; color: #cdd6e0; font-size: 12px;
+         line-height: 1.55; tab-size: 4; white-space: pre; }
+#err { position: fixed; inset: 0; display: none; place-items: center; color: #e6edf3; text-align: center; z-index: 6; }
