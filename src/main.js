@@ -12,7 +12,6 @@ import { CARS, createCar, setCarType, driveStep } from './car.js';
 import { composeCard } from './share.js';
 import { createGame } from './game.js';
 import { createRace } from './race.js';
-import { createTrailer } from './trailer.js';
 
 // ---------- routing: /<repoName> drives that city, / is the landing page ----------
 const repoName = decodeURIComponent(location.pathname.split('/')[1] || '');
@@ -417,7 +416,6 @@ addEventListener('keydown', ev => {
   const e = { code: keyCode(ev), preventDefault: () => ev.preventDefault() };
   initAudio();
   if (recState) return; // don't disturb the take
-  if (trailer.active) { if (e.code === 'Escape' || e.code === 'KeyK') trailer.cancel(); return; }
   if (shot) return; // ?shot is a deterministic still — keys would strand its camera
   if (shareOpen) {
     if (e.code === 'Escape' || e.code === 'KeyP') closeShare();
@@ -439,7 +437,6 @@ addEventListener('keydown', ev => {
   if (e.code === 'KeyP') openShare();
   if (e.code === 'KeyG') document.getElementById('playBtn').click();
   if (e.code === 'KeyR') document.getElementById('raceBtn').click();
-  if (e.code === 'KeyK') trailerBtn.click();
   if (e.code === 'KeyE' && cur) openFile(cur);
   if (KEY[e.code]) { keys[KEY[e.code]] = true; e.preventDefault(); }
 });
@@ -601,24 +598,6 @@ function applyTier(i) {
 }
 applyTier(0);
 
-// ---------- one-click cinematic trailer (records a captioned 1080p WebM) ----------
-const trailerBtn = document.getElementById('trailerBtn');
-const trailer = createTrailer({
-  camera, glCanvas: renderer.domElement, city,
-  setCityTime, uToSec, hasTL: !!TL,
-  setLiveShadows,
-  applyTier, getTier: () => tier,
-  hideDecor: hide => {
-    for (const s of landmarkSigns) s.visible = !hide;
-    for (const r of residents) r.s.visible = !hide;
-    carRig.group.visible = !hide; // the parked car shouldn't sit in the hero shots
-  },
-  onBefore: () => { if (tlOpen) setTimeline(false); if (viewerOpen) closeViewer(); game.stop(); race.stop(); setCurrent(null); trailerBtn.classList.add('on'); },
-  onDone: () => { carRig.group.visible = true; trailerBtn.classList.remove('on'); },
-});
-trailerBtn.onclick = () => trailer.active ? trailer.cancel() : trailer.start();
-tooltip(trailerBtn, () => trailer.active ? 'stop recording' : 'record a trailer — K');
-
 let frames = 0, acc = 0, calm = 0, aqNow = 0, upgradedAt = -1e9, banned = -1;
 function autoQuality(dt) {
   aqNow += dt;
@@ -659,9 +638,7 @@ let t = 0;
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05);
   t += dt;
-  if (trailer.active) {
-    trailer.update(dt);
-  } else if (recState) {
+  if (recState) {
     // one full orbit while the city grows from nothing — the money shot
     recState.t += dt;
     const p = Math.min(1, recState.t / recState.dur);
@@ -690,10 +667,9 @@ renderer.setAnimationLoop(() => {
   for (const r of residents) r.s.position.set(r.b.x, baseY(r.b) + r.b.h + 3.6 + Math.sin(t * 1.6 + r.ph) * 0.35, r.b.z);
   for (const s of gate) s.s.position.y = s.y0 + Math.sin(t * 1.3 + s.ph) * 0.3;
   if (cur && inspectFace.visible) inspectFace.position.set(cur.x, baseY(cur) + cur.h + 3, cur.z);
-  engine(carRig.car.speed, !viewerOpen && !tlOpen && !shareOpen && !recState && !trailer.active);
-  if (!shot && !shareOpen && !recState && !trailer.active) autoQuality(dt); // ?shot & captures stay max-quality
+  engine(carRig.car.speed, !viewerOpen && !tlOpen && !shareOpen && !recState);
+  if (!shot && !shareOpen && !recState) autoQuality(dt); // ?shot stays deterministic; captures stay max-quality
   if (composer) composer.render(); else renderer.render(scene, camera);
-  trailer.composite(); // draw the GL frame + captions into the recorder canvas (no-op when idle)
   if (captureNext) { captureNext = false; finishCapture(); }
   stats?.update();
 });
