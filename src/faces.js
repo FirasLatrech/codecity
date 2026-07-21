@@ -29,8 +29,11 @@ export function face(name, url) {
     g.restore();
     g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 5;
     g.beginPath(); g.arc(64, 64, 58, 0, 7); g.stroke();
-    const label = name.length > 14 ? name.slice(0, 13) + '…' : name;
-    g.font = '700 19px ui-monospace, monospace';
+    // shrink the font until the name fits the pill — long names were clipping at the canvas edge
+    const label = name.length > 18 ? name.slice(0, 17) + '…' : name;
+    let size = 19;
+    g.font = `700 ${size}px ui-monospace, monospace`;
+    while (g.measureText(label).width > 102 && size > 11) g.font = `700 ${--size}px ui-monospace, monospace`;
     const pw = Math.min(124, g.measureText(label).width + 20);
     g.fillStyle = 'rgba(10,14,20,.9)';
     g.beginPath(); g.roundRect((128 - pw) / 2, 136, pw, 30, 9); g.fill();
