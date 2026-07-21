@@ -165,6 +165,7 @@ if (process.argv[2] === '--check') {
   const root = walk(repo, '');
   if (!root.size) { console.error(`no readable text files found in ${repo}`); process.exit(1); }
   const city = build(root, basename(repo));
+  city.root = repo; // server.mjs reads file contents from here for the in-city viewer
   const git = gitStats(repo);
   if (git) {
     const now = Date.now() / 1000;
