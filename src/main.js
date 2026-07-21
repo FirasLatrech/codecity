@@ -66,6 +66,13 @@ function home(message) {
     status.classList.remove('err');
     status.textContent = 'cloning + analyzing… big repos can take a minute';
     try {
+      // already baked (the hosted demo pre-bakes the example cities)? drive straight in.
+      // a miss can fall through the SPA rewrite and return HTML — check the type, not just ok
+      const short = input.value.trim().replace(/\.git\/?$|\/+$/g, '').split('/').pop();
+      if (/^[\w.-]+$/.test(short)) {
+        const c = await fetch(`/cities/${encodeURIComponent(short)}.json`, { method: 'HEAD' }).catch(() => null);
+        if (c?.ok && c.headers.get('content-type')?.includes('json')) { location.pathname = '/' + short; return; }
+      }
       const r = await fetch('/analyze?url=' + encodeURIComponent(input.value.trim()));
       const j = await r.json();
       if (!r.ok) throw new Error(j.error);

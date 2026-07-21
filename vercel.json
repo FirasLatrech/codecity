@@ -1,0 +1,9 @@
+{
+  "buildCommand": "node tools/bake-examples.mjs && vite build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/analyze", "destination": "/api/analyze" },
+    { "source": "/raw", "destination": "/api/raw" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
