@@ -5,6 +5,7 @@
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, extname, basename, resolve } from 'node:path';
 import { execSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert';
 
 const SKIP = new Set(['.git', 'node_modules', 'dist', 'build', 'out', '.next', 'target', 'vendor', 'coverage', '__pycache__', '.venv', 'venv', 'Pods',
@@ -83,8 +84,11 @@ function layout(node, rect, out, depth = 0) {
   ].sort((a, b) => b.weight - a.weight);
   squarify(items, inner, (item, r) => {
     if (item.dir) return layout(item.dir, r, out, depth + 1);
-    const b = shrink(r, Math.min(r.w, r.d) * 0.12); // gap between buildings
+    const b = shrink(r, Math.min(r.w, r.d) * 0.15); // gap between buildings
     if (b.w < 0.05 || b.d < 0.05) return;
+    // clamp footprint aspect to 5:1 — no sliver houses, the empty rest of the plot stays a yard
+    if (b.w > b.d * 5) { const nw = b.d * 5; b.x += (b.w - nw) / 2; b.w = nw; }
+    if (b.d > b.w * 5) { const nd = b.w * 5; b.z += (b.d - nd) / 2; b.d = nd; }
     const f = item.file;
     out.buildings.push({
       x: b.x + b.w / 2, z: b.z + b.d / 2, w: b.w, d: b.d,
@@ -129,20 +133,26 @@ function check() {
 // ponytail: paths are repo-root-relative — analyzing a subdir of a repo won't match; run from the repo root.
 function gitStats(repo) {
   try {
-    const out = execSync("git log '--format=%ct|%an' --name-only --no-renames", {
+    const out = execSync("git log '--format=%ct|%ae|%an' --name-only --no-renames", {
       cwd: repo, maxBuffer: 128 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'],
     }).toString();
     const map = new Map();
-    let t = 0, author = '';
+    let t = 0, author = '', avatar = '';
     for (const line of out.split('\n')) {
       if (!line) continue;
-      const h = /^(\d+)\|(.*)$/.exec(line);
-      if (h) { t = +h[1]; author = h[2]; continue; }
+      const h = /^(\d+)\|([^|]*)\|(.*)$/.exec(line);
+      if (h) {
+        t = +h[1];
+        author = h[3];
+        avatar = createHash('md5').update(h[2].trim().toLowerCase()).digest('hex'); // gravatar hash
+        continue;
+      }
       let s = map.get(line);
       if (!s) map.set(line, s = { commits: 0, last: 0, authors: {} });
       s.commits++;
       if (t > s.last) s.last = t;
-      s.authors[author] = (s.authors[author] || 0) + 1;
+      const a = s.authors[author] ||= { n: 0, h: avatar };
+      a.n++;
     }
     return map;
   } catch { return null; }
@@ -163,7 +173,8 @@ if (process.argv[2] === '--check') {
       if (s) {
         b.commits = s.commits;
         b.age = Math.max(0, Math.round((now - s.last) / 86400));
-        b.authors = Object.entries(s.authors).sort((a, z) => z[1] - a[1]).slice(0, 3); // top 3 co-authors [name, commits]
+        b.authors = Object.entries(s.authors).sort((a, z) => z[1].n - a[1].n).slice(0, 3)
+          .map(([name, a]) => [name, a.n, a.h]); // top 3 co-authors [name, commits, gravatarHash]
       }
     }
   }
