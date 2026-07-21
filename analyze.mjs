@@ -254,6 +254,13 @@ export function analyze(repoPath, name, emailAvatars) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   if (process.argv[2] === '--check') {
     check();
+  } else if (process.argv[2] === '--bake') {
+    // server mode: node analyze.mjs --bake <repoPath> <name> [avatarsJsonPath]
+    // city JSON on stdout — runs in a child process so a big analyze never blocks the server
+    try {
+      const avatars = process.argv[5] ? JSON.parse(readFileSync(process.argv[5], 'utf8')) : {};
+      process.stdout.write(JSON.stringify(analyze(process.argv[3], process.argv[4], avatars)));
+    } catch (e) { console.error(e.message); process.exit(1); }
   } else {
     try {
       const city = analyze(process.argv[2] || '.');
