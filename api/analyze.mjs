@@ -12,10 +12,12 @@ import { analyze } from '../analyze.mjs';
 const GH = /^(?:https?:\/\/)?(?:www\.)?(?:github\.com\/)?([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/;
 const MAX_KB = 150_000; // GitHub-reported repo size cap (KB) — beyond this, run locally
 const MAX_TAR = 80 << 20; // compressed tarball cap
-// API history: 1 call per commit, 16-way concurrent (~25s at the cap; ~30% of a
-// token's hourly quota) — beyond this, tree-only. ponytail: fixed cap, no
-// adaptive budgeting until real traffic says otherwise
-const MAX_API_COMMITS = 1500;
+// API history budget: listing is cheap (100 commits/call), per-commit detail is
+// the expensive part. Repos over the detail budget get an even SAMPLE across
+// their whole history with counts scaled back up — timelapse shape, heat
+// percentiles, and author rankings stay faithful; absolute numbers approximate.
+const MAX_DETAILS = 1500; // full-detail budget (1 call each, 16-way concurrent)
+const LIST_PAGES = 100;   // up to 10k most-recent commits listed
 
 const ghHeaders = () => ({
   'user-agent': 'codecity', accept: 'application/vnd.github+json',
@@ -31,28 +33,33 @@ async function pmap(items, fn, n) {
   return out;
 }
 
-// Rebuild gitStats' per-file history map from the GitHub commits API — full
-// timelapse/heat/authors for small repos with no git binary in sight.
-// Null (-> tree-only) when: no token (unauth quota is 60/h, shared per egress
-// IP — a public demo would burn it instantly), > MAX_API_COMMITS, or API errors.
+// Rebuild gitStats' per-file history map from the GitHub commits API — no git
+// binary in sight. Null (-> tree-only) when: no token (unauth quota is 60/h,
+// shared per egress IP — a public demo would burn it instantly) or API errors.
 async function historyFromApi(owner, repo) {
   if (!process.env.GITHUB_TOKEN) return null;
-  const shas = [];
-  for (let page = 1; page <= MAX_API_COMMITS / 100; page++) {
-    const r = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits?per_page=100&page=${page}`, {
-      headers: ghHeaders(), signal: AbortSignal.timeout(10_000),
-    }).catch(() => null);
-    if (!r?.ok) return null;
-    const j = await r.json();
-    for (const c of j) shas.push(c.sha);
-    if (j.length < 100) break;
-    if (page === MAX_API_COMMITS / 100 && j.length === 100) return null; // more history than the API budget
-  }
+  const base = `https://api.github.com/repos/${owner}/${repo}/commits?per_page=100`;
+  const page1 = await fetch(`${base}&page=1`, { headers: ghHeaders(), signal: AbortSignal.timeout(10_000) }).catch(() => null);
+  if (!page1?.ok) return null;
+  const firstBatch = await page1.json();
+  if (!firstBatch.length) return null;
+  const lastPage = Math.min(LIST_PAGES, +(/page=(\d+)>; rel="last"/.exec(page1.headers.get('link') || '')?.[1] ?? 1));
+  const rest = await pmap(Array.from({ length: lastPage - 1 }, (_, i) => i + 2), p =>
+    fetch(`${base}&page=${p}`, { headers: ghHeaders(), signal: AbortSignal.timeout(10_000) })
+      .then(r => r.ok ? r.json() : []).catch(() => []), 16);
+  const shas = [firstBatch, ...rest].flat().map(c => c?.sha).filter(Boolean);
   if (!shas.length) return null;
-  const details = await pmap(shas, sha =>
+  // over budget -> even sample across the whole span, counts scaled back later
+  let sample = shas;
+  if (shas.length > MAX_DETAILS) {
+    const step = shas.length / MAX_DETAILS;
+    sample = Array.from({ length: MAX_DETAILS }, (_, i) => shas[Math.floor(i * step)]);
+  }
+  const factor = shas.length / sample.length;
+  const details = await pmap(sample, sha =>
     fetch(`https://api.github.com/repos/${owner}/${repo}/commits/${sha}`, {
       headers: ghHeaders(), signal: AbortSignal.timeout(10_000),
-    }).then(r => r.ok ? r.json() : null).catch(() => null), 16);
+    }).then(r => r.ok ? r.json() : null).catch(() => null), 24);
   // same shapes and identity-merge rule as gitStats in analyze.mjs
   const map = new Map(), ident = new Map();
   for (const c of details) {
@@ -78,12 +85,17 @@ async function historyFromApi(owner, repo) {
     }
   }
   if (!map.size) return null;
-  for (const s of map.values())
+  for (const s of map.values()) {
+    if (factor > 1) {
+      s.commits = Math.max(1, Math.round(s.commits * factor));
+      for (const a of Object.values(s.authors)) a.n = Math.max(1, Math.round(a.n * factor));
+    }
     for (const k of Object.keys(s.authors)) {
       const id = ident.get(k);
       s.authors[k].name = Object.entries(id.names).sort((a, b) => b[1] - a[1])[0][0];
       s.authors[k].h = id.avatar;
     }
+  }
   return map;
 }
 
