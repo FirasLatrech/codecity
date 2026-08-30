@@ -1,3 +1,5 @@
+
+
 <p align="center"><img src="public/og.png" alt="CodeCity" width="720" /></p>
 
 # 🏙️ CodeCity
@@ -33,8 +35,8 @@ Everything runs on exactly **two dependencies**: [three.js](https://threejs.org)
 ## 🚀 Quick start
 
 ```bash
-git clone https://github.com/FirasLatrech/CodeCity
-cd CodeCity
+git clone https://github.com/FirasLatrech/codecity
+cd codecity
 npm install
 npm run dev        # → http://localhost:8137
 ```
